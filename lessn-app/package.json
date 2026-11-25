@@ -1,0 +1,21 @@
+{
+  "name": "lessn",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A better WebUntis client for Android",
+  "scripts": {
+    "icons": "node tools/build-icons.mjs",
+    "sync": "npx cap sync android",
+    "apk": "npx cap sync android && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/haptics": "8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0",
+    "lucide-static": "1.80.0"
+  }
+}
