@@ -1,0 +1,427 @@
+// Main screens: Home (today), Week, Homework, Exams, and the lesson detail sheet.
+import {
+  S, t, esc, icon, fmt, fmtTime, durText, relDay, inDays, sameDay, addDays, mondayOf, daysBetween, nowMin, weekNumber,
+  toUntisDate, fromUntisDate, subjKey, subjName, subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge,
+  stagger, openSheet, haptic,
+} from './core.js';
+import {
+  weekData, prepareDay, changes, isChanged, periodLabel, holidayFor, nextHoliday, visibleDays, timegridFor,
+} from './data.js';
+
+const placeText = (list) => list.map((r) => {
+  const name = S.settings.teacherLongNames ? r.long : r.name;
+  return r.orig ? `<s>${esc(r.orig)}</s> <b class="chg">${esc(name)}</b>` : esc(name);
+}).join(', ');
+const roomText = (l) => l.rooms.map((r) => (r.orig ? `<s>${esc(r.orig)}</s> <b class="chg">${esc(r.name)}</b>` : esc(r.name))).join(', ');
+export const noteKey = (l) => `${subjKey(l)}|${l.date}|${l.start}`;
+
+// ---------------------------------------------------------------- lesson rows
+function lessonCard(l, i) {
+  const s = S.settings;
+  const color = colorFor(subjKey(l));
+  const p = periodLabel(l);
+  const ch = changes(l).filter((b) => !(l.code === 'cancelled' && b.cls === 'bad'));
+  if (l.units > 1) ch.unshift({ cls: 'soft', icon: 'layers', text: t('Double period') });
+  const meta = [];
+  if (s.showRoom && l.rooms.length) meta.push(`<span>${icon('map-pin')}${roomText(l)}</span>`);
+  if (s.showTeacher && l.teachers.length) meta.push(`<span>${icon('user')}${placeText(l.teachers)}</span>`);
+  if (l.group && !l.subjects.length) meta.push(`<span>${icon('users')}${esc(l.group)}</span>`);
+  const note = store.notes()[noteKey(l)];
+  const hasSummary = store.summaries().some((x) => x.lessonKey === noteKey(l));
+  const info = [l.subst, l.info].filter(Boolean).join(' · ');
+  const cancelled = l.code === 'cancelled';
+  return `<button class="lesson ${cancelled ? 'cancelled' : ''} ${isChanged(l) ? 'changed' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}" style="--c:${color};--i:${Math.min(i, 14)}">
+    <div class="l-time"><b>${fmtTime(l.start)}</b><span>${fmtTime(l.end)}</span>${p ? `<em>${esc(p)}</em>` : ''}</div>
+    <div class="l-bar"></div>
+    <div class="l-body">
+      <div class="l-title"><span>${esc(subjName(l))}</span>${note ? icon('sticky-note', 'mini') : ''}${hasSummary ? icon('sparkles', 'mini') : ''}</div>
+      ${meta.length ? `<div class="l-meta">${meta.join('')}</div>` : ''}
+      ${ch.length ? `<div class="badges">${ch.map(badge).join('')}</div>` : ''}
+      ${l.breakMin ? `<div class="l-sub">${icon('coffee')}${esc(t('incl. {m} min break', { m: l.breakMin }))}</div>` : ''}
+      ${info ? `<div class="l-info">${icon('info')}<span>${esc(info)}</span></div>` : ''}
+    </div>
+    ${cancelled ? `<div class="cancel-tag">${icon('ban')}${esc(t('Cancelled'))}</div>` : ''}
+  </button>`;
+}
+
+function gapRow(from, to, i) {
+  const m = to - from;
+  if (m < 5 || !S.settings.showBreaks) return '';
+  const free = m >= 40;
+  return `<div class="gap ${free ? 'free' : ''}"${stagger(i)}>${icon(free ? 'sunrise' : 'coffee')}<span>${esc(free ? t('Free period') : t('Break'))} · ${durText(m)}</span></div>`;
+}
+
+function lessonList(list) {
+  const rows = [];
+  let i = 0;
+  let chain = null;
+  let chainColor = '';
+  const flush = () => { if (chain) { rows.push(`<div class="chain" style="--c:${chainColor};--i:${Math.min(i, 14)}">${chain.join('')}</div>`); chain = null; } };
+  list.forEach((l, idx) => {
+    if (idx > 0 && !l.chainPrev) {
+      const prevEnd = Math.max(0, ...list.slice(0, idx).filter((x) => x.code !== 'cancelled').map((x) => x.end));
+      if (prevEnd && l.code !== 'cancelled' && l.start > prevEnd) { flush(); rows.push(gapRow(prevEnd, l.start, i++)); }
+    }
+    if (l.chainPrev && chain) {
+      const prev = list.find((x) => x.id === l.chainPrev);
+      const gap = prev ? l.start - prev.end : 0;
+      chain.push(`<div class="link">${gap >= 5 ? `<span>${icon('coffee')}${durText(gap)}</span>` : ''}</div>`);
+      chain.push(lessonCard(l, i));
+      if (!l.chainNext) flush();
+      return;
+    }
+    flush();
+    if (l.chainNext) { chainColor = colorFor(subjKey(l)); chain = [lessonCard(l, i++)]; return; }
+    rows.push(lessonCard(l, i++));
+  });
+  flush();
+  return rows.join('');
+}
+
+// ---------------------------------------------------------------- home cards
+function nowCard(lessons) {
+  const s = S.settings;
+  const n = nowMin();
+  const active = lessons.filter((l) => l.code !== 'cancelled');
+  if (!active.length) return '';
+  const cur = active.find((l) => l.start <= n && n < l.end);
+  const next = active.find((l) => l.start > n);
+  const where = (l) => [s.showRoom && l.rooms.length ? `${icon('map-pin')}${roomText(l)}` : '', s.showTeacher && l.teachers.length ? `${icon('user')}${placeText(l.teachers)}` : ''].filter(Boolean).map((x) => `<span>${x}</span>`).join('');
+  if (cur) {
+    const pct = Math.min(100, Math.max(0, ((n - cur.start) / (cur.end - cur.start)) * 100));
+    return `<div class="now-card hero" style="--c:${colorFor(subjKey(cur))}" data-act="lesson" data-id="${cur.id}">
+      <div class="now-top"><span class="live"></span>${esc(t('Now'))}${periodLabel(cur) ? ` · ${esc(t('Period'))} ${esc(periodLabel(cur))}` : ''}</div>
+      <div class="now-title">${esc(subjName(cur))}</div>
+      <div class="now-meta">${where(cur)}</div>
+      <div class="progress"><i style="width:${pct.toFixed(1)}%"></i></div>
+      <div class="now-foot"><span>${fmtTime(cur.start)} – ${fmtTime(cur.end)}</span>${s.showCountdown ? `<b>${esc(t('{t} left', { t: durText(cur.end - n) }))}</b>` : ''}</div>
+      <div class="now-next">${icon(next ? 'chevron-right' : 'sparkles')}<span>${next ? `${esc(t('Next'))} <b>${esc(subjName(next))}</b> · ${fmtTime(next.start)}${next.rooms.length && s.showRoom ? ` · ${roomText(next)}` : ''}` : esc(t('Last lesson today'))}</span></div>
+    </div>`;
+  }
+  if (next) {
+    const first = next === active[0];
+    const prevEnd = Math.max(0, ...active.filter((l) => l.end <= n).map((l) => l.end));
+    const free = !first && n - prevEnd >= 40;
+    const label = first ? t('School starts') : free ? t('Free period') : t('Break');
+    return `<div class="now-card soft" style="--c:${colorFor(subjKey(next))}" data-act="lesson" data-id="${next.id}">
+      <div class="now-top">${icon(first || free ? 'sunrise' : 'coffee')}${esc(label)}${s.showCountdown ? ` · ${esc(t('in {t}', { t: durText(next.start - n) }))}` : ''}</div>
+      <div class="now-title">${esc(subjName(next))}</div>
+      <div class="now-meta"><span>${icon('clock')}${fmtTime(next.start)} – ${fmtTime(next.end)}</span>${where(next)}</div>
+    </div>`;
+  }
+  const last = active[active.length - 1];
+  return `<div class="now-card done"><div class="now-top">${icon('sparkles')}${esc(t('Done for today'))}</div>
+    <div class="now-title">${esc(t('School ended at {t}', { t: fmtTime(last.end) }))}</div>${tomorrowHint()}</div>`;
+}
+
+function tomorrowHint() {
+  let d = addDays(S.day, 1);
+  for (let i = 0; i < 7; i++, d = addDays(d, 1)) {
+    const data = weekData(mondayOf(d));
+    if (!data) return '';
+    const list = prepareDay(data, d).filter((l) => l.code !== 'cancelled');
+    if (list.length) return `<div class="now-meta"><span>${icon('calendar')}${esc(t('{day} starts at {t} with {s}', { day: relDay(d), t: fmtTime(list[0].start), s: subjName(list[0]) }))}</span></div>`;
+  }
+  return '';
+}
+
+function holidayHero(date) {
+  const h = holidayFor(date);
+  const fmtR = (x) => `${fmt(fromUntisDate(x.start), { day: 'numeric', month: 'short' })}${x.end !== x.start ? ` – ${fmt(fromUntisDate(x.end), { day: 'numeric', month: 'short' })}` : ''}`;
+  if (h) {
+    const left = daysBetween(date, fromUntisDate(h.end)) + 1;
+    return `<div class="holiday-hero pop">
+      <div class="hh-ic">${icon('sun')}</div>
+      <div class="hh-body"><small>${esc(t('Holiday'))}</small><h3>${esc(h.name)}</h3><p>${esc(fmtR(h))} · ${esc(left === 1 ? t('last day') : t('{n} days left', { n: left }))}</p></div>
+    </div>`;
+  }
+  if (!sameDay(date, new Date())) return '';
+  const nh = nextHoliday();
+  if (!nh) return '';
+  const n = daysBetween(new Date(), fromUntisDate(nh.start));
+  if (n > 21 || n < 1) return '';
+  return `<div class="holiday-soon"${stagger(0)}>${icon('sun')}<span><b>${esc(nh.name)}</b> ${esc(inDays(fromUntisDate(nh.start)))}</span><em>${n}</em></div>`;
+}
+
+function newsCards() {
+  if (!S.news?.length) return '';
+  return `<div class="section-title">${icon('megaphone')}${esc(t('Announcements'))}</div>${S.news.map((m, i) => `
+    <button class="news" data-act="news" data-i="${i}"${stagger(i)}>
+      <div class="news-ic">${icon('megaphone')}</div>
+      <div class="news-body">${m.subject ? `<b>${esc(m.subject)}</b>` : ''}<p>${esc(m.text)}</p></div>
+    </button>`).join('')}`;
+}
+
+function iservPreview() {
+  const d = S.iservData;
+  if (!d || !store.iserv()) return '';
+  const unreadMail = (d.mail || []).filter((m) => !m.seen).length;
+  const notes = (d.notifications || []).filter((n) => !n.read).length;
+  if (!unreadMail && !notes) return '';
+  return `<button class="iserv-strip" data-act="nav" data-view="iserv"${stagger(2)}>
+    <span class="row-ic">${icon('school')}</span>
+    <span class="row-text"><b>IServ</b><small>${[notes ? t('{n} new notifications', { n: notes }) : '', unreadMail ? t('{n} unread emails', { n: unreadMail }) : ''].filter(Boolean).join(' · ')}</small></span>
+    ${icon('chevron-right', 'row-chev')}
+  </button>`;
+}
+
+function upcomingExams() {
+  const list = allExams().filter((e) => { const n = daysBetween(new Date(), fromUntisDate(e.date)); return n >= 0 && n <= 7; });
+  if (!list.length) return '';
+  return `<div class="section-title">${icon('graduation-cap')}${esc(t('Exams this week'))}</div><div class="mini-exams">${list.map((e, i) => {
+    const d = fromUntisDate(e.date);
+    return `<button class="mini-exam" data-act="nav" data-view="exams" style="--c:${colorFor(e.subject)};--i:${i}"><b>${esc(subjLabel(e.subject) || e.name)}</b><span>${esc(relDay(d))}</span></button>`;
+  }).join('')}</div>`;
+}
+
+// ---------------------------------------------------------------- Home
+function dayStrip() {
+  const today = new Date();
+  const data = weekData(S.week) || [];
+  return `<div class="strip">${visibleDays(S.week).map((d) => {
+    const u = toUntisDate(d);
+    const day = data.filter((l) => l.date === u);
+    const cancelled = day.filter((l) => l.code === 'cancelled').length;
+    const ch = day.some((l) => isChanged(l) && l.code !== 'cancelled');
+    const hol = holidayFor(d);
+    return `<button class="dpill ${sameDay(d, S.day) ? 'sel' : ''} ${sameDay(d, today) ? 'today' : ''} ${hol ? 'hol' : ''}" data-act="day" data-d="${u}">
+      <span>${esc(fmt(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b>
+      <i class="${cancelled ? 'bad' : ch ? 'on' : ''}">${hol ? icon('sun') : cancelled > 1 ? cancelled : ''}</i></button>`;
+  }).join('')}<div class="strip-ind"></div></div>`;
+}
+
+export function viewToday() {
+  const data = weekData(S.week);
+  const isToday = sameDay(S.day, new Date());
+  let body;
+  const hol = holidayFor(S.day);
+  if (!data) body = skeleton(5);
+  else {
+    const list = prepareDay(data, S.day);
+    const cancelled = list.filter((l) => l.code === 'cancelled');
+    const real = list.filter((l) => l.code !== 'cancelled');
+    const top = `${holidayHero(S.day)}
+      ${cancelled.length ? `<div class="cancel-alert pop">${icon('ban')}<span><b>${esc(cancelled.length === 1 ? t('1 lesson cancelled') : t('{n} lessons cancelled', { n: cancelled.length }))}</b>${esc(cancelled.map((l) => subjName(l, true)).join(', '))}</span></div>` : ''}
+      ${isToday ? nowCard(list) : ''}
+      ${isToday ? newsCards() + iservPreview() : ''}`;
+    if (!list.length) {
+      body = top + (hol ? '' : emptyState('coffee', t('No lessons'), t('Nothing scheduled for this day.')));
+    } else {
+      const summary = real.length
+        ? `${real.length === 1 ? t('1 lesson') : t('{n} lessons', { n: real.length })} · ${fmtTime(real[0].start)} – ${fmtTime(Math.max(...real.map((l) => l.end)))}`
+        : t('All lessons cancelled');
+      body = `${top}
+        <div class="day-head"><h2>${esc(fmt(S.day, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2><span>${esc(summary)}</span></div>
+        <div class="lessons">${lessonList(list)}</div>`;
+    }
+    if (isToday) body += upcomingExams();
+  }
+  return `${dayStrip()}<div class="pad swipe-area">${body}</div>`;
+}
+
+// ---------------------------------------------------------------- Week grid
+function layoutCols(list) {
+  const clusters = [];
+  let cur = [];
+  let end = -1;
+  for (const l of list) {
+    if (cur.length && l.start >= end) { clusters.push(cur); cur = []; end = -1; }
+    cur.push(l);
+    end = Math.max(end, l.end);
+  }
+  if (cur.length) clusters.push(cur);
+  for (const c of clusters) {
+    const ends = [];
+    for (const l of c) {
+      let i = ends.findIndex((e) => e <= l.start);
+      if (i < 0) { i = ends.length; ends.push(0); }
+      ends[i] = l.end;
+      l._col = i;
+    }
+    c.forEach((l) => { l._n = ends.length; });
+  }
+}
+
+function weekRel() {
+  const n = Math.round(daysBetween(mondayOf(new Date()), S.week) / 7);
+  if (n === 0) return t('This week');
+  if (n === 1) return t('Next week');
+  if (n === -1) return t('Last week');
+  return n > 0 ? t('In {n} weeks', { n }) : t('{n} weeks ago', { n: -n });
+}
+
+export function viewWeek() {
+  const s = S.settings;
+  const data = weekData(S.week);
+  const days = visibleDays(S.week);
+  const end = days[days.length - 1];
+  const nav = `<div class="week-nav">
+    <button class="icon-btn" data-act="week-prev" aria-label="${esc(t('Previous week'))}">${icon('chevron-left')}</button>
+    <div class="week-label"><b>${esc(fmt(S.week, { day: 'numeric', month: 'short' }))} – ${esc(fmt(end, { day: 'numeric', month: 'short' }))}</b><span>${esc(weekRel())}</span></div>
+    <button class="icon-btn" data-act="week-next" aria-label="${esc(t('Next week'))}">${icon('chevron-right')}</button></div>`;
+  if (!data) return nav + `<div class="pad">${skeleton(6)}</div>`;
+
+  const units = timegridFor(S.week);
+  const perDay = days.map((d) => prepareDay(data, d));
+  const all = perDay.flat();
+  let min = units.length ? units[0].start : 8 * 60;
+  let max = units.length ? units[units.length - 1].end : 16 * 60;
+  if (all.length) { min = Math.min(min, ...all.map((l) => l.start)); max = Math.max(max, ...all.map((l) => l.end)); }
+  const ppm = s.density === 'compact' ? 0.95 : 1.25;
+  const H = Math.ceil((max - min) * ppm);
+  const today = new Date();
+
+  const head = days.map((d) => {
+    const hol = holidayFor(d);
+    return `<div class="wk-day ${sameDay(d, today) ? 'today' : ''} ${hol ? 'hol' : ''}" data-act="goto-day" data-d="${toUntisDate(d)}"><span>${esc(fmt(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b></div>`;
+  }).join('');
+  const bands = units.map((u, i) => `<div class="wk-band ${i % 2 ? 'alt' : ''}" style="top:${(u.start - min) * ppm}px;height:${(u.end - u.start) * ppm}px"></div>`).join('');
+  const axis = units.map((u) => `<div class="wk-tick" style="top:${(u.start - min) * ppm}px"><b>${esc(u.name)}</b><span>${fmtTime(u.start)}</span></div>`).join('')
+    || Array.from({ length: Math.ceil((max - min) / 60) }, (_, i) => `<div class="wk-tick" style="top:${i * 60 * ppm}px"><span>${fmtTime(min + i * 60)}</span></div>`).join('');
+
+  let bi = 0;
+  const cols = days.map((d, di) => {
+    const list = perDay[di];
+    const hol = holidayFor(d);
+    layoutCols(list);
+    const blocks = list.map((l) => {
+      const top = (l.start - min) * ppm;
+      const next = l.chainNext ? list.find((x) => x.id === l.chainNext) : null;
+      const bottom = next ? (next.start - min) * ppm : (l.end - min) * ppm - 3;
+      const h = Math.max(18, bottom - top);
+      const color = colorFor(subjKey(l));
+      const name = s.subjectShortInGrid ? subjName(l, true) : subjName(l);
+      const lines = [];
+      if (l.code === 'cancelled' && h > 34) lines.push(`<span class="x">${esc(t('Cancelled'))}</span>`);
+      else if (s.showRoom && l.rooms.length && h > 34) lines.push(`<span>${roomText(l)}</span>`);
+      if (s.showTeacher && l.teachers.length && h > 52 && l.code !== 'cancelled') lines.push(`<span>${placeText(l.teachers)}</span>`);
+      return `<button class="blk ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) ? 'changed' : ''} ${l.type === 'ex' ? 'is-exam' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}"
+        style="--c:${color};--i:${Math.min(bi++, 30)};top:${top}px;height:${h}px;left:calc(${(l._col / l._n) * 100}% + 2px);width:calc(${100 / l._n}% - 4px)">
+        <b>${l.code === 'cancelled' ? icon('ban', 'mini') : ''}${esc(name)}</b>${lines.join('')}</button>`;
+    }).join('');
+    const nowLine = s.showNowLine && sameDay(d, today) && nowMin() >= min && nowMin() <= max ? `<div class="now-line" style="top:${(nowMin() - min) * ppm}px"></div>` : '';
+    const holTag = hol && !list.length ? `<div class="wk-hol">${icon('sun')}<span>${esc(hol.name)}</span></div>` : '';
+    return `<div class="wk-col ${sameDay(d, today) ? 'today' : ''}">${holTag}${blocks}${nowLine}</div>`;
+  }).join('');
+
+  const hols = [...new Set(days.map((d) => holidayFor(d)).filter(Boolean))];
+  return `${nav}${hols.map((h) => `<div class="holiday-soon wk-holbar">${icon('sun')}<span><b>${esc(h.name)}</b> ${esc(fmt(fromUntisDate(h.start), { day: 'numeric', month: 'short' }))} – ${esc(fmt(fromUntisDate(h.end), { day: 'numeric', month: 'short' }))}</span></div>`).join('')}
+  <div class="wk swipe-area" style="--n:${days.length}">
+    <div class="wk-head"><div class="wk-corner">${esc(String(weekNumber(S.week)))}</div>${head}</div>
+    <div class="wk-body" style="height:${H + 8}px"><div class="wk-axis">${axis}</div><div class="wk-grid">${bands}${cols}</div></div>
+  </div>
+  ${all.length || hols.length ? '' : `<div class="pad">${emptyState('calendar', t('No lessons this week'))}</div>`}`;
+}
+
+// ---------------------------------------------------------------- Homework
+export function hwDone(h) { const m = store.doneHomework(); return h.id in m ? m[h.id] : h.completed; }
+
+export function viewTasks() {
+  const chips = [['open', t('To do')], ['done', t('Done')], ['all', t('All')]].map(([f, label]) => `<button class="chip ${S.hwFilter === f ? 'on' : ''}" data-act="hw-filter" data-f="${f}">${esc(label)}</button>`).join('');
+  if (!S.homework) return `<div class="chips">${chips}</div><div class="pad">${skeleton(4)}</div>`;
+  const today = toUntisDate(new Date());
+  let list = S.homework.slice().sort((a, b) => a.due - b.due);
+  if (S.hwFilter === 'open') list = list.filter((h) => !hwDone(h));
+  else if (S.hwFilter === 'done') list = list.filter(hwDone).reverse();
+  const open = S.homework.filter((h) => !hwDone(h) && h.due >= today).length;
+  if (!list.length) {
+    return `<div class="chips">${chips}</div><div class="pad">${S.hwFilter === 'open' ? emptyState('circle-check', t('All caught up'), t('No open homework.')) : emptyState('clipboard-list', t('Nothing here'))}</div>`;
+  }
+  const groups = {};
+  list.forEach((h) => { (groups[h.due] ||= []).push(h); });
+  let i = 0;
+  const html = Object.entries(groups).map(([due, items]) => {
+    const d = fromUntisDate(Number(due));
+    const overdue = Number(due) < today;
+    return `<div class="group"><div class="group-head ${overdue ? 'bad' : ''}"${stagger(i++)}><b>${esc(relDay(d))}</b><span>${esc(fmt(d, { day: 'numeric', month: 'short' }))}</span></div>
+      ${items.map((h) => {
+        const done = hwDone(h);
+        return `<div class="hw ${done ? 'done' : ''} ${overdue && !done ? 'overdue' : ''}" style="--c:${colorFor(h.subject)};--i:${Math.min(i++, 14)}">
+          <button class="check" data-act="hw-toggle" data-id="${h.id}" aria-label="${esc(t('Mark as done'))}">${icon('check')}</button>
+          <div class="hw-body"><div class="hw-subj">${esc(subjLabel(h.subject) || t('Homework'))}</div>
+            <div class="hw-text">${esc(h.text)}</div>
+            ${h.remark ? `<div class="hw-remark">${esc(h.remark)}</div>` : ''}
+            <div class="hw-meta">${esc(t('Given {d}', { d: fmt(fromUntisDate(h.date), { day: 'numeric', month: 'short' }) }))}${h.teacher ? ` · ${esc(h.teacher)}` : ''}${h.attachments.length ? ` · ${h.attachments.length} ${esc(t('attachments'))}` : ''}</div>
+          </div></div>`;
+      }).join('')}</div>`;
+  }).join('');
+  return `<div class="chips">${chips}<span class="chip-note">${esc(t('{n} open', { n: open }))}</span></div><div class="pad">${html}</div>`;
+}
+
+// ---------------------------------------------------------------- Exams
+export function allExams() {
+  const mine = store.myExams().map((e) => ({ ...e, mine: true }));
+  return [...(S.exams || []), ...mine];
+}
+
+function examCard(e, past, i) {
+  const d = fromUntisDate(e.date);
+  const n = daysBetween(new Date(), d);
+  const urgent = !past && n <= 3;
+  const rooms = (e.rooms || []).map((r) => (typeof r === 'string' ? r : r.name)).join(', ');
+  const teachers = (e.teachers || []).map((r) => (typeof r === 'string' ? r : r.name)).join(', ');
+  return `<div class="exam ${past ? 'past' : ''} ${urgent ? 'urgent' : ''}" style="--c:${colorFor(e.subject)};--i:${Math.min(i, 14)}">
+    <div class="exam-date"><b>${d.getDate()}</b><span>${esc(fmt(d, { month: 'short' }))}</span></div>
+    <div class="exam-body">
+      <div class="exam-top"><span class="exam-subj">${esc(subjLabel(e.subject) || t('Exam'))}</span>${past ? (e.grade ? badge({ cls: 'ok', icon: 'star', text: e.grade }) : '') : badge({ cls: urgent ? 'bad' : 'soft', icon: 'timer', text: inDays(d) })}</div>
+      <div class="exam-name">${esc(e.name || e.type || t('Exam'))}</div>
+      <div class="l-meta">${e.start ? `<span>${icon('clock')}${fmtTime(e.start)} – ${fmtTime(e.end)}</span>` : ''}${rooms ? `<span>${icon('map-pin')}${esc(rooms)}</span>` : ''}${teachers ? `<span>${icon('user')}${esc(teachers)}</span>` : ''}</div>
+      ${e.text ? `<div class="l-info">${icon('info')}<span>${esc(e.text)}</span></div>` : ''}
+      ${e.mine ? `<div class="exam-foot">${badge({ cls: 'soft', icon: 'sparkles', text: t('From lesson summary') })}<button class="link-btn" data-act="del-myexam" data-id="${esc(e.id)}">${icon('trash-2')}</button></div>` : ''}
+    </div></div>`;
+}
+
+export function viewExams() {
+  if (!S.exams && !store.myExams().length) return `<div class="pad">${skeleton(4)}</div>`;
+  const all = allExams();
+  const today = toUntisDate(new Date());
+  const up = all.filter((e) => e.date >= today).sort((a, b) => a.date - b.date || (a.start || 0) - (b.start || 0));
+  const past = all.filter((e) => e.date < today).sort((a, b) => b.date - a.date);
+  if (!all.length) return `<div class="pad">${emptyState('graduation-cap', t('No exams'), t('Nothing announced yet.'))}</div>`;
+  return `<div class="pad">
+    ${up.length ? `<div class="section-title">${esc(t('Upcoming'))} · ${up.length}</div>${up.map((e, i) => examCard(e, false, i)).join('')}` : emptyState('shield-check', t('No upcoming exams'))}
+    ${past.length ? `<details class="past"><summary>${icon('chevron-down')}${esc(t('Past exams'))} · ${past.length}</summary>${past.map((e, i) => examCard(e, true, i)).join('')}</details>` : ''}
+  </div>`;
+}
+
+// ---------------------------------------------------------------- lesson sheet
+export function openLesson(id) {
+  const l = S.index[id];
+  if (!l) return;
+  haptic();
+  const color = colorFor(subjKey(l));
+  const d = fromUntisDate(l.date);
+  const ch = changes(l);
+  const hw = (S.homework || []).filter((h) => h.due === l.date && h.subject === subjKey(l));
+  const sums = store.summaries().filter((x) => x.lessonKey === noteKey(l));
+  const detail = (ic, label, value) => (value ? `<div class="d-row">${icon(ic)}<div><small>${esc(label)}</small><span>${value}</span></div></div>` : '');
+  openSheet(() => `
+    <div class="d-head ${l.code === 'cancelled' ? 'is-cancelled' : ''}" style="--c:${color}">
+      <div class="d-chip">${esc(l.subjects[0]?.name || l.activity || t('Event'))}</div>
+      <h2>${esc(subjName(l))}</h2>
+      <p>${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long' }))} · ${fmtTime(l.start)} – ${fmtTime(l.end)}${periodLabel(l) ? ` · ${esc(t('Period'))} ${esc(periodLabel(l))}` : ''}</p>
+      ${ch.length ? `<div class="badges">${ch.map(badge).join('')}</div>` : ''}
+    </div>
+    <div class="card">
+      ${detail('user', t('Teacher'), l.teachers.map((x) => (x.orig ? `<s>${esc(x.orig)}</s> ` : '') + esc(x.long !== x.name ? `${x.long} (${x.name})` : x.name)).join(', '))}
+      ${detail('map-pin', t('Room'), l.rooms.map((r) => (r.orig ? `<s>${esc(r.orig)}</s> ` : '') + esc(r.long && r.long !== r.name ? `${r.name} · ${r.long}` : r.name)).join(', '))}
+      ${detail('users', t('Classes'), esc(l.classes.map((c) => c.name).join(', ')))}
+      ${detail('layers', t('Group'), esc(l.group))}
+      ${detail('clock', t('Duration'), esc(durText(l.end - l.start)) + (l.breakMin ? ` · ${esc(t('incl. {m} min break', { m: l.breakMin }))}` : ''))}
+      ${detail('arrow-left-right', t('Substitution'), esc(l.subst))}
+      ${detail('info', t('Info'), esc(l.info))}
+      ${detail('book-open', t('Lesson text'), esc(l.text))}
+    </div>
+    ${hw.length ? `<div class="section-title">${esc(t('Homework due'))}</div><div class="card">${hw.map((h) => `<div class="d-row">${icon('clipboard-list')}<div><span>${esc(h.text)}</span></div></div>`).join('')}</div>` : ''}
+    ${sums.length ? `<div class="section-title">${esc(t('AI summary'))}</div><div class="card">${sums.map((x) => `<button class="row" data-act="open-summary" data-id="${x.id}"><span class="row-ic">${icon('sparkles')}</span><span class="row-text"><b>${esc(x.result?.title || t('Lesson summary'))}</b><small>${esc((x.result?.topics || []).slice(0, 3).join(' · '))}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : ''}
+    <div class="section-title">${esc(t('My note'))}</div>
+    <textarea class="note" id="note" placeholder="${esc(t('Add a note for this lesson'))}">${esc(store.notes()[noteKey(l)] || '')}</textarea>
+  `, {
+    onClose: () => {
+      const v = document.getElementById('note')?.value.trim();
+      if (v !== undefined) store.setNote(noteKey(l), v);
+    },
+  });
+}
+
+export { PALETTE, hash };

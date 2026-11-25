@@ -4,32 +4,46 @@ Lessn is an unofficial Android app for WebUntis. It shows your timetable, homewo
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-1.0.0.apk` to your phone, or download it from GitHub on the phone.
-2. Tap it. Android will ask you to allow installs from this source (your browser or file manager). Allow it.
-3. Tap **Install**. If Play Protect warns about an unknown developer, tap **More details → Install anyway**. It warns because the app is not from the Play Store.
-4. Open **Lessn**, search for your school, and sign in with your normal WebUntis username and password.
+1. Copy `Lessn-2.0.0.apk` to your phone, or download it from GitHub on the phone.
+2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
+3. If 1.0 is already installed, this installs over it and keeps your data.
+4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
 
-If the school search finds nothing, tap **Enter server manually**:
-- **Server**: the host from your WebUntis web address, e.g. `nessa.webuntis.com`. You can also paste the full URL.
-- **School login name**: the `school=` value in that URL.
+If the search can't find your school, tap **Enter the server manually** and type the server (e.g. `nessa.webuntis.com`, or paste the full URL) and the school login name (the `school=` value in that URL).
 
 ## Features
 
-- **Today**: a live "Now" card with a progress bar and countdown, what's next, breaks and free periods, and cancellations, substitutions and room changes highlighted.
-- **Week**: a timetable grid with period numbers, a current-time line, holidays, and side-by-side parallel lessons. Swipe to change weeks.
-- **Homework**: grouped by due date, with overdue items highlighted. You can tick tasks off; this is only saved on your phone.
-- **Exams**: upcoming exams with a countdown, plus past exams with grades if your school shares them.
-- **More**: other class, teacher and room timetables (if your school allows it), absences, holidays and settings.
-- Notes on any lesson, pull to refresh, offline cache, and Android back button support.
+- **Home**: holiday banner with the holiday's name and countdown, a red alert for cancelled lessons, a live "Now" card, school announcements (WebUntis messages of the day), new IServ notifications and exams this week.
+- **Lessons**: double periods are merged or visibly linked, and cancelled lessons are striped red with a CANCELLED tag (in the week grid too).
+- **Week** grid with holidays filled in by name and a current-time line. Swipe to change weeks.
+- **Homework**, **Exams** (including tests found in AI summaries), **Grades** (from WebUntis if your school shares them, plus grades you add yourself, with averages).
+- **Attendance**: a calendar of days you were or weren't at school. If you turn on the location check, the app checks your location 10 minutes after your first lesson. If you're not at school it asks "Are you at school?" in a notification.
+- **Notifications**: reminders before each lesson and alerts for changes. **Do Not Disturb** can switch on automatically during lessons.
+- **IServ**: sign in with your IServ login (it can reuse your WebUntis password). Shows notifications, inbox and upcoming dates. Mail, files, tasks and the rest open in a restyled in-app IServ browser that signs you in for you.
+- **Lesson recorder (beta)**: records a lesson (works with the screen off) and sends it to Google Gemini. You get topics, a summary, key points, homework and any tests that were mentioned, with dates. It understands German audio. You need a free Gemini API key from aistudio.google.com/apikey. **Only record with your teacher's and class's permission. In Germany, recording people without consent can be illegal (§201 StGB).**
+- **Offline**: the current week, the week before and the next 3 weeks are saved, plus homework, exams and grades.
+- **Languages**: English, Deutsch, Türkçe, Français (Menu → Settings).
+- **Directions to school** opens Google Maps.
 
 ## Hidden customization
 
-There is no visible menu for customization, so the app looks like it was designed this way. There are two ways to open it:
+There's no visible menu for it. To open it, either **long-press the big title** on any screen, or go to **Menu** and **tap the version text at the bottom 7 times**.
 
-- **Long-press the big title** at the top of any screen for about a second, or
-- go to **More** and tap the version text at the bottom (`Lessn 1.0.0`) **7 times quickly**.
+Inside you can change:
+- the **theme**: Auto, Material Light, Material Dark, Liquid Glass Light, Liquid Glass Dark, or Black
+- the accent color, corner roundness, text size, font, density and lesson colors
+- animations on or off
+- each subject's color and name
+- the timetable options
+- the AI model
+- a backup of your customization (copy and paste)
 
-The options are theme (Auto / Light / Dark / Black AMOLED), accent color, corner roundness, text size, font, density, and lesson color mode. You can recolor or rename each subject, set a custom title on the Today screen, and turn on or off: merge double lessons, hide cancelled lessons, show rooms and teachers, full or short names, breaks, period numbers, the time line, the countdown, and vibration. You can also copy and paste your customization as a backup.
+## Permissions (all optional, asked only when you turn a feature on)
+
+- **Notifications**: lesson reminders and change alerts
+- **Do Not Disturb access**: muting during lessons
+- **Location, set to "Allow all the time"**: the "Are you at school?" check
+- **Microphone**: the lesson recorder
 
 ## Build it yourself
 
@@ -52,7 +66,7 @@ keyPassword=...
 ```
 Without that file, the release build is signed with the debug key. That still installs fine.
 
-The app is plain HTML, CSS and JS in `www/`: `api.js` is the WebUntis client, `app.js` is the UI, and `store.js` handles settings and the cache. After you edit it, run `npx cap sync android` and build again. Icons are from Lucide (ISC); run `npm run icons` after adding names in `tools/build-icons.mjs`.
+The UI is plain HTML, CSS and JS in `www/js`: `api.js` (WebUntis), `iserv.js` (IServ), `ai.js` (Gemini), `data.js` (loading, caching, scheduling), `views.js` and `features.js` (screens), `login.js`, `i18n.js` (translations) and `app.js` (shell). Native Android code (alarms, Do Not Disturb, location check, recording service, IServ browser) is in `android/app/src/main/java/app/lessn/timetable/`. After you edit it, run `npx cap sync android` and build again. Icons are from Lucide (ISC); run `npm run icons` after adding names in `tools/build-icons.mjs`.
 
 ## Notes
 

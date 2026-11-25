@@ -13,11 +13,24 @@ function remove(name) { try { localStorage.removeItem(KEY + name); } catch { /* 
 
 export const DEFAULTS = {
   // Visible settings
+  lang: (navigator.language || 'en').slice(0, 2) === 'de' ? 'de' : 'en',
   startView: 'today',
+  notifyLessons: false,
+  notifyMinutes: 5,
+  notifyChanges: true,
+  dndLessons: false,
+  dndBreaks: false,
+  presenceCheck: false,
+  presenceRadius: 250,
+  schoolLoc: null,
+  aiModel: 'gemini-flash-latest',
+  aiLang: 'auto',
+  keepAudio: false,
   weekDays: 'auto', // auto | 5 | 6 | 7
   autoRefresh: true,
   // Customization (only reachable through the hidden panel)
-  theme: 'system', // system | light | dark | amoled
+  theme: 'auto', // auto | material-light | material-dark | glass-light | glass-dark | amoled
+  animations: true,
   accent: '#4f6bff',
   radius: 16,
   fontScale: 1,
@@ -50,7 +63,9 @@ export const store = {
   saveSettings: (s) => write('settings', s),
   resetCustomization: () => {
     const s = store.settings();
-    const keep = { startView: s.startView, weekDays: s.weekDays, autoRefresh: s.autoRefresh };
+    const keys = ['lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
+      'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiLang', 'keepAudio'];
+    const keep = Object.fromEntries(keys.map((k) => [k, s[k]]));
     write('settings', keep);
   },
 
@@ -61,6 +76,20 @@ export const store = {
       Object.keys(localStorage).filter((k) => k.startsWith(KEY + 'cache:')).forEach((k) => localStorage.removeItem(k));
     } catch { /* ignore */ }
   },
+
+  iserv: () => read('iserv', null),
+  setIServ: (v) => (v ? write('iserv', v) : remove('iserv')),
+  aiKey: () => read('aikey', ''),
+  setAiKey: (v) => write('aikey', v),
+
+  manualGrades: () => read('grades', []),
+  setManualGrades: (v) => write('grades', v),
+  summaries: () => read('summaries', []),
+  setSummaries: (v) => write('summaries', v),
+  myExams: () => read('myexams', []),
+  setMyExams: (v) => write('myexams', v),
+  seenChanges: () => read('seen', {}),
+  setSeenChanges: (v) => write('seen', v),
 
   notes: () => read('notes', {}),
   setNote: (key, text) => { const n = read('notes', {}); if (text) n[key] = text; else delete n[key]; write('notes', n); },

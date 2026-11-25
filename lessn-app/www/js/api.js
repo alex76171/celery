@@ -52,6 +52,13 @@ export async function searchSchools(query) {
   }));
 }
 
+export function htmlToText(html) {
+  try {
+    const doc = new DOMParser().parseFromString(String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n'), 'text/html');
+    return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+  } catch { return String(html).replace(/<[^>]+>/g, ''); }
+}
+
 function names(list) {
   return (list || []).map((x) => ({
     id: x.id, name: x.name || '', long: x.longname || x.name || '',
@@ -76,6 +83,7 @@ function normalizeLesson(l) {
     text: l.lstext || '',
     group: l.sg || '',
     activity: l.activityType || '',
+    lsnumber: l.lsnumber || 0,
   };
 }
 
@@ -155,7 +163,7 @@ export class Untis {
       options: {
         element: { id: el.id, type: el.type },
         startDate: toUntisDate(start), endDate: toUntisDate(end),
-        showInfo: true, showSubstText: true, showLsText: true, showStudentgroup: true,
+        showInfo: true, showSubstText: true, showLsText: true, showLsNumber: true, showStudentgroup: true,
         klasseFields: ['id', 'name', 'longname'], roomFields: ['id', 'name', 'longname'],
         subjectFields: ['id', 'name', 'longname'], teacherFields: ['id', 'name', 'longname'],
       },
@@ -238,6 +246,33 @@ export class Untis {
       subject: e.subject || '', teachers: e.teachers || [], rooms: e.rooms || [],
       text: e.text || '', grade: e.grade || '',
     }));
+  }
+
+  /** Messages of the day (announcements) shown on the WebUntis start page. */
+  async news(date) {
+    const j = await this.rest('/api/public/news/newsWidgetData', { date: toUntisDate(date) });
+    const d = j.data || {};
+    return (d.messagesOfDay || []).map((m) => ({ id: m.id, subject: m.subject || '', text: htmlToText(m.text || ''), attachments: (m.attachments || []).length }));
+  }
+
+  /** Grades. WebUntis does not document this endpoint, so the parser is defensive. */
+  async grades(start, end) {
+    const j = await this.rest('/api/classreg/grade/gradeList', {
+      personId: this.personId, startDate: toUntisDate(start), endDate: toUntisDate(end),
+    });
+    const raw = Array.isArray(j.data) ? j.data : (j.data?.grades || j.data?.gradeList || []);
+    return raw.map((g, i) => {
+      const mark = g.grade?.mark || g.mark || {};
+      const value = Number(mark.markValue != null ? mark.markValue / (mark.markValue > 100 ? 100 : 1) : NaN);
+      const display = mark.markDisplayValue != null ? String(mark.markDisplayValue) : (mark.name || g.grade?.text || '');
+      return {
+        id: 'wu' + (g.id || i), subject: g.subject?.name || g.subject || g.lesson?.subjects || '',
+        value: Number.isFinite(Number(display.replace(',', '.'))) ? Number(display.replace(',', '.')) : value,
+        display: display || String(value), date: g.grade?.date || g.date || 0,
+        text: g.grade?.text || g.text || '', type: g.grade?.examType?.name || g.examType?.name || g.examType || '',
+        weight: 1, source: 'webuntis',
+      };
+    }).filter((g) => g.display);
   }
 
   async absences(start, end) {

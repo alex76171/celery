@@ -1,11 +1,6 @@
 // Extracts the Lucide icons the app uses into www/js/icons.js (ISC license, see LICENSE-lucide).
 import { readFileSync, writeFileSync } from 'node:fs';
-const names = ['calendar','calendar-days','calendar-range','house','list-checks','graduation-cap','menu','settings',
- 'chevron-left','chevron-right','chevron-down','x','check','circle','circle-check','refresh-cw','log-out','user',
- 'map-pin','clock','book-open','info','triangle-alert','ban','arrow-left-right','search','school','lock','eye','eye-off',
- 'palette','sun','moon','smartphone','type','layout-grid','rows-3','pencil','sticky-note','trash-2','users','door-open',
- 'user-x','wifi-off','sparkles','coffee','bell','paintbrush','rotate-ccw','square-pen','clipboard-list','server','at-sign',
- 'circle-alert','circle-x','timer','sliders-horizontal','hash','layers','sunrise','moon-star','tag','download','upload','shield-check','zap','eye-closed','filter','star'];
+const names = ['arrow-left-right', 'award', 'ban', 'bell', 'bell-off', 'book-open', 'calendar', 'calendar-check', 'calendar-days', 'calendar-range', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'circle-alert', 'circle-check', 'circle-x', 'clipboard-list', 'clock', 'coffee', 'door-open', 'download', 'external-link', 'eye', 'eye-off', 'folder', 'globe', 'graduation-cap', 'house', 'inbox', 'info', 'key-round', 'layers', 'layout-grid', 'list-checks', 'locate-fixed', 'lock', 'log-out', 'mail', 'map-pin', 'megaphone', 'message-square', 'mic', 'navigation', 'newspaper', 'paintbrush', 'pencil', 'plus', 'refresh-cw', 'rotate-ccw', 'school', 'search', 'server', 'shield-alert', 'shield-check', 'sparkles', 'square', 'star', 'sticky-note', 'sun', 'sunrise', 'timer', 'trash-2', 'triangle-alert', 'user', 'users', 'x'];
 const out = {};
 for (const n of names) {
   const svg = readFileSync(new URL(`../node_modules/lucide-static/icons/${n}.svg`, import.meta.url), 'utf8');
