@@ -2,7 +2,7 @@
 import {
   S, t, esc, icon, fmt, fmtTime, relDay, inDays, sameDay, addDays, startOfDay, daysBetween, toUntisDate, fromUntisDate, pad,
   subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge, stagger, row, seg, toggle, openSheet, closeSheet,
-  rerenderSheet, toast, haptic, THEMES, VERSION, currentTheme, isDark, nowMin, subjKey, subjName, durText,
+  rerenderSheet, toast, haptic, THEMES, FONTS, VERSION, currentTheme, isDark, nowMin, subjKey, subjName, durText,
 } from './core.js';
 import { LANGS } from './i18n.js';
 import { native, hasNative } from './native.js';
@@ -11,6 +11,7 @@ import {
   loadGrades, loadAbsences, offlineInfo, weekData, prepareDay, scheduleNative, ownElement,
 } from './data.js';
 import { noteKey } from './views.js';
+import { userTabs, TAB_DEFS } from './assist.js';
 import { render } from './app.js';
 
 // ---------------------------------------------------------------- Menu
@@ -18,26 +19,25 @@ export function viewMore() {
   const a = S.account;
   const s = S.settings;
   const off = offlineInfo();
+  const tabs = userTabs();
   const tiles = [
-    ['grades', 'award', t('Grades')],
-    ['iserv', 'school', 'IServ'],
-    ['attendance', 'calendar-check', t('Attendance')],
-    ['recorder', 'mic', t('Lesson recorder'), 'Beta'],
-    ['browse', 'users', t('Other timetables')],
-    ['holidays', 'sun', t('Holidays')],
-    ['directions', 'navigation', t('Directions to school')],
-    ['notif-settings', 'bell', t('Notifications')],
+    ...Object.entries(TAB_DEFS).filter(([k]) => !tabs.includes(k)).map(([k, d]) => [k, d.icon, t(d.label === 'Recorder' ? 'Lesson recorder' : d.label === 'AI' ? 'AI helper' : d.label), k === 'recorder' || k === 'ai' ? 'Beta' : '', 'nav']),
+    ['browse', 'users', t('Other timetables'), '', 'browse'],
+    ['holidays', 'sun', t('Holidays'), '', 'holidays'],
+    ['directions', 'navigation', t('Directions to school'), '', 'directions'],
+    ['notif-settings', 'bell', t('Notifications'), '', 'notif-settings'],
   ];
   return `<div class="pad">
     <div class="account"${stagger(0)}><div class="avatar">${icon('user')}</div><div><b>${esc(a.username)}</b><small>${esc(a.schoolName || a.school)}</small></div></div>
-    <div class="tiles">${tiles.map(([act, ic, label, tag], i) => `<button class="tile" data-act="${['grades', 'iserv', 'attendance', 'recorder'].includes(act) ? 'nav' : act}" data-view="${act}"${stagger(i + 1)}>
+    <div class="tiles">${tiles.map(([view, ic, label, tag, act], i) => `<button class="tile" data-act="${act}" data-view="${view}"${stagger(i + 1)}>
       <span class="tile-ic">${icon(ic)}</span><b>${esc(label)}</b>${tag ? `<em>${tag}</em>` : ''}</button>`).join('')}</div>
     <div class="section-title">${esc(t('Settings'))}</div>
     <div class="card">
       <div class="row static"><span class="row-text"><b>${esc(t('Language'))}</b></span></div>
       <div class="row-pad">${seg('lang', Object.entries(LANGS), s.lang)}</div>
-      <div class="row static"><span class="row-text"><b>${esc(t('Start screen'))}</b></span></div>
-      <div class="row-pad">${seg('startView', [['today', t('Home')], ['week', t('Week')], ['tasks', t('Homework')]], s.startView)}</div>
+      ${row('tabs-edit', 'layout-grid', t('Tabs'), userTabs().map((k) => t(TAB_DEFS[k].label)).join(' · '))}
+      ${row('setup-ai', 'sparkles', t('AI helper'), store.aiKey() ? t('Connected') : t('Not set up'))}
+      ${row('setup-iserv', 'school', 'IServ', store.iserv()?.host || t('Not set up'))}
       <div class="row static"><span class="row-text"><b>${esc(t('Days per week'))}</b></span></div>
       <div class="row-pad">${seg('weekDays', [['auto', t('Auto')], ['5', '5'], ['6', '6'], ['7', '7']], s.weekDays)}</div>
       ${toggle('autoRefresh', t('Refresh on open'), t('Update when you return to the app'))}
@@ -395,6 +395,7 @@ export async function openNotifSettings() {
       ${s.notifyLessons ? `<div class="row-pad">${seg('notifyMinutes', [['2', '2 min'], ['5', '5 min'], ['10', '10 min'], ['15', '15 min']], s.notifyMinutes)}</div>` : ''}
       ${toggle('notifyChanges', t('Change alerts'), t('Cancelled lessons, substitutions and room changes'), 'notif-toggle')}
     </div>
+    ${store.iserv() ? `<div class="section-title">${icon('school')}IServ</div><div class="card">${toggle('iservNotify', t('IServ notifications'), t('New messages and IServ notifications, checked every 15 minutes'), 'iserv-notify')}</div>` : ''}
     <div class="section-title">${icon('bell-off')}${esc(t('Do not disturb'))}</div>
     <div class="card">
       ${toggle('dndLessons', t('Do not disturb during lessons'), t('Turns on when a lesson starts and off when it ends'), 'dnd-toggle')}
@@ -480,6 +481,8 @@ export function openNews(i) {
   openSheet(() => `<h2 class="sheet-title">${icon('megaphone')}${esc(m.subject || t('Announcement'))}</h2><div class="card"><p class="sum-text">${esc(m.text)}</p></div>`);
 }
 
+const FONT_CSS = { system: 'system-ui', inter: 'Inter', poppins: 'Poppins', nunito: 'Nunito', outfit: 'Outfit', space: "'Space Grotesk'", lora: 'Lora', mono: "'JetBrains Mono'" };
+
 // ---------------------------------------------------------------- hidden customization
 const ACCENTS = ['#4f6bff', '#7c5cff', '#d6409f', '#e5484d', '#f76b15', '#e2a300', '#30a46c', '#12a594', '#0090ff', '#64748b'];
 export function setS(key, value) {
@@ -506,7 +509,7 @@ export function openCustomize() {
       <div class="row static"><span class="row-text"><b>${esc(t('Text size'))}</b><small id="v-fontScale">${Math.round(st.fontScale * 100)}%</small></span></div>
       <div class="row-pad"><input type="range" min="0.85" max="1.25" step="0.05" value="${st.fontScale}" data-key="fontScale"></div>
       <div class="row static"><span class="row-text"><b>${esc(t('Font'))}</b></span></div>
-      <div class="row-pad">${seg('font', [['system', t('System')], ['serif', 'Serif'], ['mono', 'Mono']], st.font)}</div>
+      <div class="row-pad font-list">${FONTS.map(([id, label]) => `<button class="font-chip ${(st.font || 'theme') === id ? 'on' : ''}" data-act="set" data-key="font" data-val="${id}" style="font-family:${FONT_CSS[id] || 'inherit'}">${esc(t(label))}</button>`).join('')}</div>
       <div class="row static"><span class="row-text"><b>${esc(t('Density'))}</b></span></div>
       <div class="row-pad">${seg('density', [['comfortable', t('Comfortable')], ['compact', t('Compact')]], st.density)}</div>
       <div class="row static"><span class="row-text"><b>${esc(t('Lesson colors'))}</b></span></div>

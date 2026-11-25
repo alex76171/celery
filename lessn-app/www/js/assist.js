@@ -1,0 +1,421 @@
+// Homework from every source, the AI helper chat, study plans for exams, the tab editor
+// and the extra "day plan" sections on Home.
+import {
+  S, t, $, esc, icon, fmt, relDay, inDays, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, rerenderSheet,
+  toast, haptic, colorFor, subjLabel, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
+} from './core.js';
+import { chat as aiChat, studyPlan as aiPlan, DEFAULT_MODEL } from './ai.js';
+import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
+import { render, setView } from './app.js';
+
+const read = (k, d) => { try { const v = localStorage.getItem(`lessn:${k}`); return v ? JSON.parse(v) : d; } catch { return d; } };
+const write = (k, v) => { try { localStorage.setItem(`lessn:${k}`, JSON.stringify(v)); } catch { toast(t('Storage is full'), 'err'); } };
+
+// ================================================================ homework from all sources
+export const myHomework = () => read('myhw', []);
+const setMyHomework = (v) => write('myhw', v);
+
+export function loadIServTasks() {
+  const c = iservClient();
+  if (!c || S.iservTasksLoading) return;
+  S.iservTasksLoading = true;
+  c.exercises().then((list) => { S.iservTasks = list; store.setCache('is-tasks', list); }, () => { S.iservTasks = S.iservTasks || []; })
+    .finally(() => { S.iservTasksLoading = false; render(); });
+}
+S.iservTasks = store.cache('is-tasks')?.data || null;
+
+/** All homework: WebUntis, your own and IServ tasks, in one shape. */
+export function allHomework() {
+  const out = [];
+  for (const h of S.homework || []) out.push({ ...h, source: 'untis', key: `u${h.id}` });
+  for (const h of myHomework()) out.push({ ...h, source: 'mine', key: `m${h.id}`, attachments: [], teacher: '', remark: '' });
+  for (const x of S.iservTasks || []) {
+    out.push({ id: x.id, key: x.id, source: 'iserv', subject: x.tags[0] || '', text: x.title, due: x.due || toUntisDate(new Date()), date: x.start || x.due || 0, url: x.url, completed: x.done, attachments: [], remark: x.tags.slice(1).join(', ') });
+  }
+  return out;
+}
+export function hwDoneAny(h) { const m = store.doneHomework(); return h.key in m ? m[h.key] : (h.id in m && h.source === 'untis' ? m[h.id] : !!h.completed); }
+
+export function openHomeworkForm(prefill = {}) {
+  const subs = subjectsKnown();
+  const tomorrow = addDays(new Date(), 1);
+  openSheet(() => `<h2 class="sheet-title">${icon('square-pen')}${esc(t('Add homework'))}</h2>
+    <div class="form">
+      <label class="lbl">${esc(t('Subject'))}</label>
+      <select class="field" id="h-subj"><option value="">${esc(t('No subject'))}</option>${subs.map(([k, long]) => `<option value="${esc(k)}" ${prefill.subject === k ? 'selected' : ''}>${esc(subjLabel(k) || long)}</option>`).join('')}</select>
+      <label class="lbl">${esc(t('What to do'))}</label>
+      <textarea class="note" id="h-text" placeholder="${esc(t('e.g. Workbook p. 42, no. 3–7'))}">${esc(prefill.text || '')}</textarea>
+      <label class="lbl">${esc(t('Due'))}</label>
+      <input class="field" id="h-due" type="date" value="${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}">
+      <button class="btn" data-act="hw-save">${esc(t('Save'))}</button>
+    </div>`);
+}
+export function saveHomework() {
+  const text = $('#h-text').value.trim();
+  if (!text) { toast(t('Write what you have to do'), 'err'); return; }
+  const due = Number($('#h-due').value.replace(/-/g, '')) || toUntisDate(addDays(new Date(), 1));
+  setMyHomework([...myHomework(), { id: `h${Date.now()}`, subject: $('#h-subj').value, text, due, date: toUntisDate(new Date()) }]);
+  closeSheet();
+  render();
+  toast(t('Homework saved'));
+}
+
+export function openHomework(key) {
+  const h = allHomework().find((x) => x.key === key);
+  if (!h) return;
+  const done = hwDoneAny(h);
+  const src = { untis: 'WebUntis', mine: t('Added by you'), iserv: t('IServ task') }[h.source];
+  openSheet(() => `<div class="d-head" style="--c:${colorFor(h.subject)}">
+      <div class="d-chip">${esc(subjLabel(h.subject) || t('Homework'))}</div>
+      <h2>${esc(h.text.split('\n')[0].slice(0, 90))}</h2>
+      <p>${esc(t('Due'))} ${esc(relDay(fromUntisDate(h.due)))} · ${esc(fmt(fromUntisDate(h.due), { day: 'numeric', month: 'long' }))}</p>
+      <div class="badges">${badge({ cls: 'soft', icon: h.source === 'iserv' ? 'school' : h.source === 'mine' ? 'user' : 'calendar', text: src })}${done ? badge({ cls: 'ok', icon: 'check', text: t('Done') }) : ''}</div>
+    </div>
+    ${h.text.length > 90 || h.remark ? `<div class="card"><p class="sum-text">${esc(h.text)}${h.remark ? `\n\n${esc(h.remark)}` : ''}</p></div>` : ''}
+    <button class="ai-cta" data-act="ai-homework" data-key="${esc(key)}"><span class="ai-orb">${icon('sparkles')}</span><span><b>${esc(t('Get help from AI'))}</b><small>${esc(t('Ask questions or send a photo of the task'))}</small></span>${icon('chevron-right', 'row-chev')}</button>
+    <div class="card">
+      <button class="row" data-act="hw-toggle-any" data-key="${esc(key)}"><span class="row-ic">${icon(done ? 'rotate-ccw' : 'circle-check')}</span><span class="row-text"><b>${esc(done ? t('Mark as not done') : t('Mark as done'))}</b></span></button>
+      ${h.source === 'iserv' ? `<button class="row" data-act="iserv-open" data-url="${esc(h.url)}"><span class="row-ic">${icon('external-link')}</span><span class="row-text"><b>${esc(t('Open in IServ'))}</b><small>${esc(t('Hand in or see attachments'))}</small></span></button>` : ''}
+      ${h.source === 'mine' ? `<button class="row danger" data-act="hw-del" data-key="${esc(key)}"><span class="row-ic">${icon('trash-2')}</span><span class="row-text"><b>${esc(t('Delete'))}</b></span></button>` : ''}
+    </div>`);
+}
+export function toggleHomework(key) {
+  const h = allHomework().find((x) => x.key === key);
+  if (!h) return;
+  const v = !hwDoneAny(h);
+  store.setHomeworkDone(key, v);
+  haptic(v ? 'MEDIUM' : 'LIGHT');
+  return v;
+}
+export function deleteHomework(key) {
+  setMyHomework(myHomework().filter((h) => `m${h.id}` !== key));
+  closeSheet();
+  render();
+}
+
+function subjectsKnown() {
+  const m = {};
+  Object.values(S.weeks).forEach((list) => { if (Array.isArray(list)) list.forEach((l) => { if (l.subjects[0]) m[l.subjects[0].name] = l.subjects[0].long; }); });
+  return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+// ================================================================ AI chat
+const chats = () => read('chats', []);
+const saveChats = (list) => write('chats', list.slice(0, 40).map((c) => ({ ...c, messages: c.messages.map((m) => ({ ...m, images: (m.images || []).map((i) => ({ thumb: i.thumb })) })) })));
+const live = {}; // chat id -> messages incl. full image data for this session
+let pending = []; // images attached in the composer
+let current = null;
+
+/** Recent AI lesson summaries for a subject, newest first. */
+export function summariesFor(subject, n = 5) {
+  return store.summaries().filter((x) => x.status === 'done' && (!subject || x.subject === subject)).sort((a, b) => b.date - a.date).slice(0, n);
+}
+const summaryText = (list) => list.map((x) => `- ${fmt(fromUntisDate(x.date), { day: 'numeric', month: 'short' })}: ${x.result.title}. ${x.result.summary} Topics: ${(x.result.topics || []).join(', ')}. Homework: ${(x.result.homework || []).join('; ') || '–'}. Tests: ${(x.result.tests || []).map((ts) => `${ts.what} ${ts.when}`).join('; ') || '–'}`).join('\n');
+
+function systemPrompt(extra) {
+  const lang = { en: 'English', de: 'German', tr: 'Turkish', fr: 'French' }[S.settings.lang] || 'German';
+  return `You are a friendly, patient tutor for a school student in Germany. Explain step by step and check understanding.
+Help the student learn: give hints and explanations before full solutions, but give the full solution if they ask for it.
+Reply in ${lang} unless the student writes in another language. Keep answers short and clear, use simple Markdown (bold, lists).
+Today is ${fmt(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.
+${extra || ''}`;
+}
+
+export function newChat({ title, context = '', kind = 'free', subject = '' } = {}) {
+  const c = { id: `c${Date.now()}`, title: title || t('New chat'), context, kind, subject, t: Date.now(), messages: [] };
+  saveChats([c, ...chats()]);
+  live[c.id] = [];
+  current = c.id;
+  pending = [];
+  setView('ai-chat', 'left');
+}
+
+export function chatForHomework(key) {
+  const h = allHomework().find((x) => x.key === key);
+  if (!h) return;
+  closeSheet(true);
+  const sums = summariesFor(h.subject, 3);
+  newChat({
+    title: `${subjLabel(h.subject) || t('Homework')}: ${h.text.slice(0, 40)}`, subject: h.subject, kind: 'homework',
+    context: `The student needs help with this homework (subject: ${subjLabel(h.subject) || 'unknown'}, due ${fmt(fromUntisDate(h.due), { day: 'numeric', month: 'long' })}):\n"${h.text}"${h.remark ? `\nNote: ${h.remark}` : ''}
+${sums.length ? `What was covered in recent lessons of this subject (from recordings):\n${summaryText(sums)}` : ''}`,
+  });
+}
+
+export function chatForExam(e) {
+  closeSheet(true);
+  const sums = summariesFor(e.subject, 6);
+  const plan = read('plans', {})[examId(e)];
+  newChat({
+    title: `${t('Exam')}: ${subjLabel(e.subject) || e.name}`, subject: e.subject, kind: 'exam',
+    context: `The student is preparing for an exam: ${subjLabel(e.subject)} "${e.name || e.type || ''}" on ${fmt(fromUntisDate(e.date), { weekday: 'long', day: 'numeric', month: 'long' })}. ${e.text || ''}
+${sums.length ? `Recent lesson summaries in this subject:\n${summaryText(sums)}` : 'No lesson summaries are available.'}
+${plan ? `Their study plan: ${plan.plan.map((d) => `${d.date}: ${d.title}`).join('; ')}` : ''}
+Offer to quiz them with practice questions.`,
+  });
+}
+
+export function viewAI() {
+  const list = chats();
+  return `<div class="pad">
+    <button class="ai-cta big" data-act="ai-new"${stagger(0)}><span class="ai-orb">${icon('sparkles')}</span><span><b>${esc(t('New chat'))}</b><small>${esc(t('Ask anything, or send a photo of a task'))}</small></span>${icon('plus', 'row-chev')}</button>
+    ${store.aiKey() ? '' : `<div class="notice warn">${icon('key-round')}<span>${esc(t('Add your Gemini API key to use the AI.'))}</span></div><button class="btn small ghost" data-act="setup-ai">${esc(t('Set up AI'))}</button>`}
+    ${list.length ? `<div class="section-title">${icon('message-square')}${esc(t('Your chats'))}</div><div class="card">${list.map((c) => `<button class="chat-row" data-act="ai-open" data-id="${c.id}">
+      <span class="av group" style="--c:${c.subject ? colorFor(c.subject) : S.settings.accent}">${icon(c.kind === 'exam' ? 'graduation-cap' : c.kind === 'homework' ? 'clipboard-list' : 'sparkles')}</span>
+      <span class="chat-row-text"><span class="chat-row-top"><b>${esc(c.title)}</b><small>${esc(relDay(new Date(c.t)))}</small></span>
+      <span class="chat-row-bottom"><span>${esc((c.messages[c.messages.length - 1]?.text || '').slice(0, 80))}</span></span></span></button>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+export function openChat(id) { current = id; pending = []; setView('ai-chat', 'left'); }
+export const chatTitle = () => chats().find((c) => c.id === current)?.title || t('AI helper');
+
+function md(s) {
+  return esc(s)
+    .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/(^|\s)\*(?!\s)(.+?)\*(?=\s|$)/g, '$1<i>$2</i>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^#{1,3} (.+)$/gm, '<b class="md-h">$1</b>')
+    .replace(/^\s*[-*] (.+)$/gm, '<span class="md-li">$1</span>')
+    .replace(/^\s*(\d+)\. (.+)$/gm, '<span class="md-li num"><em>$1.</em> $2</span>')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/(<\/span>|<\/b>)\n(?=<span class="md-li)/g, '$1')
+    .replace(/(class="md-h">[^<]*<\/b>)\n/g, '$1')
+    .trim();
+}
+
+function chatMessages(c) {
+  const msgs = live[c.id] || c.messages;
+  const intro = c.context ? `<div class="ai-context">${icon('info')}<span>${esc(t('The AI knows about this task and your recent lessons.'))}</span></div>` : '';
+  return intro + msgs.map((m) => `<div class="msg ${m.role === 'user' ? 'me' : 'them'} tail">
+    ${m.role === 'model' ? '<span class="av sm ai">' + icon('sparkles') + '</span>' : ''}
+    <div class="bubble ${m.role === 'model' ? 'ai-bubble' : ''}">${(m.images || []).filter((i) => i.thumb).map((i) => `<img class="msg-img" src="${i.thumb}" alt="">`).join('')}<span class="txt">${m.role === 'model' ? md(m.text) : esc(m.text)}</span></div>
+  </div>`).join('') + (S.aiThinking === c.id ? `<div class="msg them tail"><span class="av sm ai">${icon('sparkles')}</span><div class="bubble ai-bubble typing"><i></i><i></i><i></i></div></div>` : '');
+}
+
+export function viewAIChat() {
+  const c = chats().find((x) => x.id === current);
+  if (!c) return emptyState('sparkles', t('No chat selected'));
+  setTimeout(() => { const m = $('#main'); if (m) m.scrollTop = m.scrollHeight; }, 0);
+  const starters = c.kind === 'exam' ? [t('Quiz me with 5 questions'), t('Explain the most important topics'), t('What should I learn today?')]
+    : c.kind === 'homework' ? [t('Explain how to start'), t('Give me a hint'), t('Check my solution')]
+      : [t('Explain a topic to me'), t('Help me with my homework'), t('Make a summary of my last lesson')];
+  return `<div class="chat"><div id="msgs" class="msgs">${chatMessages(c)}</div>
+    ${(live[c.id] || c.messages).length ? '' : `<div class="starters">${starters.map((x) => `<button class="chip" data-act="ai-starter" data-text="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}</div>
+  <div class="attach-row" id="attach-row">${pendingHtml()}</div>
+  <form class="composer" id="ai-composer">
+    <label class="attach" aria-label="${esc(t('Add a photo'))}">${icon('image')}<input type="file" id="ai-file" accept="image/*" multiple hidden></label>
+    <textarea id="ai-input" rows="1" placeholder="${esc(t('Ask the AI…'))}" enterkeyhint="send"></textarea>
+    <button class="send" aria-label="${esc(t('Send'))}">${icon('send')}</button>
+  </form>`;
+}
+const pendingHtml = () => pending.map((p, i) => `<span class="att-prev"><img src="${p.thumb}" alt=""><button data-act="ai-unattach" data-i="${i}">${icon('x')}</button></span>`).join('');
+export function unattach(i) { pending.splice(i, 1); $('#attach-row').innerHTML = pendingHtml(); }
+
+/** Shrinks a photo so it uploads fast: max 1600 px, JPEG. */
+function shrink(file, max, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+export async function attachFiles(files) {
+  for (const f of [...files].slice(0, 4)) {
+    try {
+      const full = await shrink(f, 1600, 0.85);
+      const thumb = await shrink(f, 360, 0.7);
+      pending.push({ mime: 'image/jpeg', data: full.split(',')[1], thumb });
+    } catch { toast(t('Could not read that image'), 'err'); }
+  }
+  $('#attach-row').innerHTML = pendingHtml();
+}
+
+export async function sendAI(textOverride) {
+  const input = $('#ai-input');
+  const text = (textOverride ?? input?.value ?? '').trim();
+  if (!text && !pending.length) return;
+  if (!store.aiKey()) { toast(t('Add your Gemini API key first.'), 'err'); return; }
+  const list = chats();
+  const c = list.find((x) => x.id === current);
+  if (!c) return;
+  const msgs = live[c.id] || (live[c.id] = c.messages.map((m) => ({ ...m })));
+  msgs.push({ role: 'user', text: text || t('Please look at this picture.'), images: pending });
+  pending = [];
+  if (input) { input.value = ''; input.style.height = ''; }
+  S.aiThinking = c.id;
+  repaint(c);
+  haptic();
+  try {
+    const answer = await aiChat({ apiKey: store.aiKey(), model: S.settings.aiModel || DEFAULT_MODEL, messages: msgs, system: systemPrompt(c.context) });
+    msgs.push({ role: 'model', text: answer });
+  } catch (e) {
+    msgs.push({ role: 'model', text: `⚠ ${t(e.message)}` });
+  }
+  S.aiThinking = null;
+  c.messages = msgs;
+  c.t = Date.now();
+  if (c.title === t('New chat') && text) c.title = text.slice(0, 48);
+  saveChats([c, ...chats().filter((x) => x.id !== c.id)]);
+  if (S.view === 'ai-chat' && current === c.id) repaint(c);
+}
+function repaint(c) {
+  const box = $('#msgs');
+  if (!box) return;
+  box.innerHTML = chatMessages(c);
+  $('.starters')?.remove();
+  $('#attach-row').innerHTML = pendingHtml();
+  const m = $('#main');
+  requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; });
+}
+export function deleteChat(id) { saveChats(chats().filter((c) => c.id !== id)); delete live[id]; setView('ai', 'right'); }
+
+// ================================================================ exams & study plans
+export const examId = (e) => String(e.id ?? `${e.date}-${e.subject}`);
+const plans = () => read('plans', {});
+const savePlans = (p) => write('plans', p);
+
+export function openExam(e) {
+  const d = fromUntisDate(e.date);
+  const sums = summariesFor(e.subject, 6);
+  openSheet(() => {
+    const p = plans()[examId(e)];
+    const doneMap = read('plandone', {});
+    return `<div class="d-head" style="--c:${colorFor(e.subject)}">
+      <div class="d-chip">${esc(subjLabel(e.subject) || t('Exam'))}</div>
+      <h2>${esc(e.name || e.type || t('Exam'))}</h2>
+      <p>${esc(fmt(d, { weekday: 'long', day: 'numeric', month: 'long' }))}${e.start ? ` · ${fmtTime(e.start)}–${fmtTime(e.end)}` : ''} · ${esc(inDays(d))}</p>
+      ${e.text ? `<div class="l-info">${icon('info')}<span>${esc(e.text)}</span></div>` : ''}
+    </div>
+    <button class="ai-cta" data-act="ai-exam" data-id="${esc(examId(e))}"><span class="ai-orb">${icon('sparkles')}</span><span><b>${esc(t('Study with AI'))}</b><small>${esc(sums.length ? t('Uses your {n} lesson summaries', { n: sums.length }) : t('Explanations and practice questions'))}</small></span>${icon('chevron-right', 'row-chev')}</button>
+    <div class="section-title">${icon('calendar-check')}${esc(t('Study plan'))}</div>
+    ${S.planBusy === examId(e) ? `<div class="processing">${icon('sparkles', 'spin-slow')}<span>${esc(t('Making your plan…'))}</span></div>`
+    : p ? `${p.plan.map((day) => {
+      const dd = new Date(day.date);
+      const past = !Number.isNaN(dd.getTime()) && daysBetween(dd, new Date()) > 0;
+      return `<div class="plan-day ${past ? 'past' : ''}"><div class="plan-date"><b>${Number.isNaN(dd.getTime()) ? '' : dd.getDate()}</b><span>${Number.isNaN(dd.getTime()) ? esc(day.date) : esc(fmt(dd, { weekday: 'short' }))}</span></div>
+        <div class="plan-body"><b>${esc(day.title)}</b>${(day.tasks || []).map((task, i) => {
+          const k = `${examId(e)}|${day.date}|${i}`;
+          return `<button class="plan-task ${doneMap[k] ? 'done' : ''}" data-act="plan-toggle" data-k="${esc(k)}"><span class="check">${icon('check')}</span><span>${esc(task)}</span></button>`;
+        }).join('')}${day.minutes ? `<small>${icon('timer')}${day.minutes} min</small>` : ''}</div></div>`;
+    }).join('')}${p.tips?.length ? `<div class="card"><p class="sum-text">${p.tips.map((x) => `• ${esc(x)}`).join('\n')}</p></div>` : ''}
+      <button class="btn small ghost" data-act="plan-make" data-id="${esc(examId(e))}">${icon('refresh-cw')}${esc(t('Make a new plan'))}</button>`
+      : `<p class="hint">${esc(sums.length ? t('The AI uses your lesson summaries to plan what to learn each day.') : t('Record lessons in this subject to get a plan based on what was taught.'))}</p>
+      <button class="btn" data-act="plan-make" data-id="${esc(examId(e))}">${icon('sparkles')}${esc(t('Make a study plan'))}</button>`}
+  `;
+  }, { full: true });
+}
+
+export async function makePlan(e) {
+  if (!store.aiKey()) { toast(t('Add your Gemini API key first.'), 'err'); return; }
+  const id = examId(e);
+  S.planBusy = id;
+  rerenderSheet();
+  try {
+    const d = fromUntisDate(e.date);
+    const iso = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+    const sums = summariesFor(e.subject, 8).map((x) => ({ date: iso(fromUntisDate(x.date)), title: x.result.title, topics: x.result.topics || [], keyPoints: x.result.keyPoints || [] }));
+    const res = await aiPlan({
+      apiKey: store.aiKey(), model: S.settings.aiModel || DEFAULT_MODEL, lang: S.settings.lang, today: iso(new Date()),
+      exam: { date: iso(d), subject: subjLabel(e.subject), name: e.name || e.type || '', text: e.text || '' }, summaries: sums,
+    });
+    savePlans({ ...plans(), [id]: { ...res, subject: e.subject, examDate: e.date, name: e.name || e.type || '', t: Date.now() } });
+    toast(t('Study plan ready'));
+  } catch (err) { toast(t(err.message), 'err'); }
+  S.planBusy = null;
+  rerenderSheet();
+  render();
+}
+export function togglePlanTask(k) {
+  const m = read('plandone', {});
+  m[k] = !m[k];
+  write('plandone', m);
+  haptic(m[k] ? 'MEDIUM' : 'LIGHT');
+  rerenderSheet();
+  render();
+}
+
+// ================================================================ Home: day plan sections
+export function homeExtras() {
+  const today = toUntisDate(new Date());
+  const tomorrow = toUntisDate(addDays(new Date(), 1));
+  const out = [];
+  // homework due today / tomorrow / overdue
+  const due = allHomework().filter((h) => !hwDoneAny(h) && h.due <= tomorrow && h.due >= today - 7).sort((a, b) => a.due - b.due);
+  if (due.length) {
+    out.push(`<div class="section-title">${icon('list-checks')}${esc(t('Homework due'))}</div><div class="card">${due.slice(0, 5).map((h) => `<button class="d-row tap" data-act="hw-open" data-key="${esc(h.key)}" style="--c:${colorFor(h.subject)}">
+      <span class="dot-c"></span><div><span>${esc(h.text.split('\n')[0].slice(0, 70))}</span><small>${esc(subjLabel(h.subject) || (h.source === 'iserv' ? 'IServ' : t('Homework')))} · <b class="${h.due < today ? 'bad' : ''}">${esc(relDay(fromUntisDate(h.due)))}</b></small></div></button>`).join('')}</div>`);
+  }
+  // study plan tasks for today
+  const iso = `${String(today).slice(0, 4)}-${String(today).slice(4, 6)}-${String(today).slice(6)}`;
+  const doneMap = read('plandone', {});
+  const study = [];
+  for (const [id, p] of Object.entries(plans())) {
+    if (p.examDate < today) continue;
+    const day = (p.plan || []).find((d) => d.date === iso);
+    if (day) (day.tasks || []).forEach((task, i) => study.push({ k: `${id}|${day.date}|${i}`, task, subject: p.subject, title: day.title, examDate: p.examDate }));
+  }
+  if (study.length) {
+    out.push(`<div class="section-title">${icon('graduation-cap')}${esc(t('Study today'))}</div><div class="card">${study.map((x) => `<button class="plan-task row-like ${doneMap[x.k] ? 'done' : ''}" data-act="plan-toggle" data-k="${esc(x.k)}" style="--c:${colorFor(x.subject)}">
+      <span class="check">${icon('check')}</span><span><b>${esc(x.task)}</b><small>${esc(subjLabel(x.subject))} · ${esc(t('Exam'))} ${esc(inDays(fromUntisDate(x.examDate)))}</small></span></button>`).join('')}</div>`);
+  }
+  // IServ notifications
+  const notes = (S.iservData?.notifications || []).filter((n) => !n.read).slice(0, 3);
+  if (notes.length) {
+    out.push(`<div class="section-title">${icon('bell')}IServ</div><div class="card">${notes.map((n) => `<button class="d-row tap unread" data-act="is-note" data-id="${esc(n.id)}" data-url="${esc(n.url)}">${icon('bell')}<div><span>${esc(n.title)}</span><small>${esc(n.text)}</small></div></button>`).join('')}</div>`);
+  }
+  return out.join('');
+}
+
+// ================================================================ tabs
+export const TAB_DEFS = {
+  today: { label: 'Home', icon: 'house' },
+  week: { label: 'Week', icon: 'calendar-range' },
+  tasks: { label: 'Homework', icon: 'list-checks' },
+  exams: { label: 'Exams', icon: 'graduation-cap' },
+  iserv: { label: 'IServ', icon: 'school' },
+  ai: { label: 'AI', icon: 'sparkles' },
+  grades: { label: 'Grades', icon: 'award' },
+  attendance: { label: 'Attendance', icon: 'calendar-check' },
+  recorder: { label: 'Recorder', icon: 'mic' },
+};
+export const userTabs = () => (S.settings.tabs || ['today', 'week', 'tasks', 'exams']).filter((x) => TAB_DEFS[x]).slice(0, 4);
+
+export function openTabEditor() {
+  openSheet(() => {
+    const tabs = userTabs();
+    const rest = Object.keys(TAB_DEFS).filter((k) => !tabs.includes(k));
+    return `<h2 class="sheet-title">${icon('layout-grid')}${esc(t('Tabs'))}</h2>
+    <p class="hint">${esc(t('Pick up to 4 tabs. Menu is always there, so you can still reach everything.'))}</p>
+    <div class="card">${tabs.map((k, i) => `<div class="row tab-edit"><span class="row-ic">${icon(TAB_DEFS[k].icon)}</span><span class="row-text"><b>${esc(t(TAB_DEFS[k].label))}</b></span>
+      <button class="icon-btn" data-act="tab-move" data-k="${k}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${icon('chevron-up')}</button>
+      <button class="icon-btn" data-act="tab-move" data-k="${k}" data-dir="1" ${i === tabs.length - 1 ? 'disabled' : ''}>${icon('chevron-down')}</button>
+      <button class="icon-btn danger-ic" data-act="tab-remove" data-k="${k}" ${tabs.length <= 1 ? 'disabled' : ''}>${icon('x')}</button></div>`).join('')}
+      <div class="row tab-edit static"><span class="row-ic">${icon('layout-grid')}</span><span class="row-text"><b>${esc(t('Menu'))}</b><small>${esc(t('Always shown'))}</small></span></div></div>
+    ${rest.length ? `<div class="section-title">${esc(t('Add a tab'))}</div><div class="card">${rest.map((k) => `<button class="row" data-act="tab-add" data-k="${k}" ${tabs.length >= 4 ? 'disabled' : ''}><span class="row-ic">${icon(TAB_DEFS[k].icon)}</span><span class="row-text"><b>${esc(t(TAB_DEFS[k].label))}</b></span>${icon('plus', 'row-chev')}</button>`).join('')}</div>` : ''}
+    ${tabs.length >= 4 ? `<p class="hint">${esc(t('Remove a tab first to add another one.'))}</p>` : ''}`;
+  });
+}
+export function editTabs(action, k, dir) {
+  const tabs = userTabs();
+  if (action === 'remove' && tabs.length > 1) tabs.splice(tabs.indexOf(k), 1);
+  if (action === 'add' && tabs.length < 4 && !tabs.includes(k)) tabs.push(k);
+  if (action === 'move') { const i = tabs.indexOf(k); const j = i + dir; if (j >= 0 && j < tabs.length) [tabs[i], tabs[j]] = [tabs[j], tabs[i]]; }
+  S.settings.tabs = tabs;
+  store.saveSettings(S.settings);
+  haptic();
+  rerenderSheet();
+  return tabs;
+}
+
+export { iservOpenUrl, startOfDay };

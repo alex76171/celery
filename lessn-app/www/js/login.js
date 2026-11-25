@@ -3,8 +3,10 @@ import { S, t, esc, icon, $, store, applyTheme } from './core.js';
 import { LANGS } from './i18n.js';
 import { Untis, searchSchools, parseServerInput } from './api.js';
 import { startApp } from './app.js';
+import { cityFromLocation } from './onboarding.js';
+import { native, hasNative } from './native.js';
 
-const L = { step: 1, dir: 'fwd', school: null, manual: false, results: [], query: '', searching: false, searchMsg: '', error: '', busy: false };
+const L = { step: 0, near: null, nearCity: '', nearState: 'idle', dir: 'fwd', school: null, manual: false, results: [], query: '', searching: false, searchMsg: '', error: '', busy: false };
 
 const blobs = '<div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div>';
 
@@ -12,9 +14,46 @@ function langPicker() {
   return `<div class="lang-pick">${icon('globe')}<select id="lang-sel">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${S.settings.lang === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>`;
 }
 
+const HELLOS = [['en', 'Hello'], ['de', 'Hallo'], ['tr', 'Merhaba'], ['fr', 'Bonjour']];
+function step0() {
+  return `<div class="hello">
+    <div class="hello-words">${HELLOS.map(([k, w], i) => `<span class="hello-w" style="--n:${i}" lang="${k}">${w}</span>`).join('')}</div>
+    <div class="hello-bottom">
+      <div class="hello-langs">${Object.entries(LANGS).map(([k, v]) => `<button class="hello-lang ${S.settings.lang === k ? 'on' : ''}" data-login="lang" data-l="${k}">${esc(v)}</button>`).join('')}</div>
+      <button class="hello-go" data-login="start" aria-label="${esc(t('Continue'))}">${icon('chevron-right')}</button>
+    </div>
+  </div>`;
+}
+
+function nearby() {
+  if (L.manual || L.query.length >= 3) return '';
+  if (L.nearState === 'loading') return `<div class="results muted">${icon('locate-fixed', 'spin-slow')}${esc(t('Looking for schools near you…'))}</div>`;
+  if (L.nearState === 'done' && L.near?.length) {
+    return `<div class="section-title near-title">${icon('map-pin')}${esc(t('Schools near {city}', { city: L.nearCity }))}</div>
+      <div class="results">${L.near.slice(0, 12).map((s, i) => `<button type="button" class="result" data-login="pick-near" data-i="${i}" style="--i:${Math.min(i, 10)}"><span class="res-ic">${icon('school')}</span><div><b>${esc(s.name)}</b><small>${esc(s.address)}</small></div>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>`;
+  }
+  if (L.nearState === 'idle' && hasNative()) return `<button type="button" class="near-btn" data-login="near">${icon('locate-fixed')}<span><b>${esc(t('Find schools near me'))}</b><small>${esc(t('Uses your location once'))}</small></span></button>`;
+  if (L.nearState === 'many') return `<p class="hint center">${esc(t('Many schools in {city}. Type your school\'s name.', { city: L.nearCity }))}</p>`;
+  return '';
+}
+
+async function findNearby() {
+  L.nearState = 'loading';
+  renderLogin();
+  try {
+    const st = await native.request(['location']);
+    if (st.location !== 'granted') throw new Error('denied');
+    L.nearCity = await cityFromLocation();
+    if (!L.nearCity) throw new Error('no city');
+    try { L.near = await searchSchools(L.nearCity); L.nearState = L.near.length ? 'done' : 'none'; }
+    catch (e) { L.nearState = e.code === -6003 ? 'many' : 'none'; }
+  } catch { L.nearState = 'none'; }
+  if (L.step === 1) renderLogin();
+}
+
 function step1() {
   return `<div class="login-step step-${L.dir}">
-    <div class="login-top"><span></span>${langPicker()}</div>
+    <div class="login-top"><button class="icon-btn" data-login="back" aria-label="${esc(t('Back'))}">${icon('chevron-left')}</button>${langPicker()}</div>
     <div class="login-hero">
       <div class="logo">${icon('calendar-days')}</div>
       <h1>${esc(t('Find your school'))}</h1>
@@ -28,6 +67,7 @@ function step1() {
       </div>`
     : `<label class="input big">${icon('search')}<input id="school-q" placeholder="${esc(t('School name or city'))}" value="${esc(L.query)}" autocomplete="off" autofocus></label>
       <div id="school-results">${schoolResults()}</div>
+      <div id="near">${nearby()}</div>
       <button type="button" class="link center" data-login="manual">${esc(t("Can't find it? Enter the server manually"))}</button>`}
   </div>`;
 }
@@ -59,7 +99,7 @@ function schoolResults() {
 }
 
 export function renderLogin() {
-  document.body.innerHTML = `<div class="login">${blobs}${L.step === 1 ? step1() : step2()}</div><div id="toast" class="toast"></div>`;
+  document.body.innerHTML = `<div class="login ${L.step === 0 ? 'is-hello' : ''}">${blobs}${L.step === 0 ? step0() : L.step === 1 ? step1() : step2()}</div><div id="toast" class="toast"></div>`;
 }
 
 function keepCreds() {
@@ -86,6 +126,8 @@ export function bindLogin() {
     L.searchMsg = '';
     clearTimeout(searchTimer);
     const box = () => $('#school-results');
+    const near = $('#near');
+    if (near) near.innerHTML = L.query.length >= 3 ? '' : nearby();
     if (L.query.length < 3) { L.results = []; if (box()) box().innerHTML = ''; return; }
     searchTimer = setTimeout(async () => {
       L.searching = true;
@@ -102,8 +144,12 @@ export function bindLogin() {
     const b = e.target.closest('[data-login]');
     if (!b) return;
     const a = b.dataset.login;
+    if (a === 'lang') { S.settings.lang = b.dataset.l; store.saveSettings(S.settings); applyTheme(); go(0, 'none'); return; }
+    if (a === 'start') { go(1, 'fwd'); if (hasNative() && L.nearState === 'idle') findNearby(); return; }
+    if (a === 'near') { findNearby(); return; }
+    if (a === 'pick-near') { L.school = L.near[Number(b.dataset.i)]; L.error = ''; go(2, 'fwd'); return; }
     if (a === 'pick') { L.school = L.results[Number(b.dataset.i)]; L.error = ''; go(2, 'fwd'); }
-    else if (a === 'back') { L.error = ''; go(1, 'back'); }
+    else if (a === 'back') { L.error = ''; go(L.step - 1, 'back'); }
     else if (a === 'manual') { L.manual = true; go(1, 'none'); }
     else if (a === 'search') { L.manual = false; go(1, 'none'); }
     else if (a === 'manual-next') {

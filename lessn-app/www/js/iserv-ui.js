@@ -78,15 +78,8 @@ export function viewIServHub() {
 function setupForm() {
   return `<div class="pad">
     <div class="iserv-intro"${stagger(0)}><div class="logo small">${icon('school')}</div><h2>${esc(t('Connect IServ'))}</h2><p>${esc(t('Messenger, mail, files and dates from IServ, right here.'))}</p></div>
-    <div class="card form"${stagger(1)}>
-      <label class="lbl">${esc(t('IServ address'))}</label>
-      <label class="input">${icon('globe')}<input id="is-host" placeholder="${esc(t('e.g. myschool.de'))}" autocapitalize="off" autocorrect="off"></label>
-      <label class="lbl">${esc(t('Username'))}</label>
-      <label class="input">${icon('user')}<input id="is-user" value="${esc(S.account.username)}" placeholder="vorname.nachname" autocapitalize="off" autocorrect="off"></label>
-      <label class="lbl">${esc(t('Password'))}</label>
-      <label class="input">${icon('lock')}<input id="is-pass" type="password" placeholder="${esc(t('Leave empty to use your WebUntis password'))}"></label>
-      <button class="btn" data-act="iserv-connect">${esc(t('Connect'))}</button>
-    </div></div>`;
+    <button class="btn" data-act="setup-iserv"${stagger(1)}>${icon('search')}${esc(t('Set up IServ'))}</button>
+  </div>`;
 }
 
 export async function connect() {

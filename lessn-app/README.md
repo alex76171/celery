@@ -4,39 +4,39 @@ Lessn is an unofficial Android app for WebUntis. It shows your timetable, homewo
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-2.1.0.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-2.2.0.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
 
 If the search can't find your school, tap **Enter the server manually** and type the server (e.g. `nessa.webuntis.com`, or paste the full URL) and the school login name (the `school=` value in that URL).
 
+## First start
+
+1. A **Hello** screen cycles through Hello / Hallo / Merhaba / Bonjour. Pick your language and tap the arrow.
+2. **Find schools near me** uses your location once to list WebUntis schools in your town. You can also search by name.
+3. Sign in with your WebUntis login.
+4. Set up the **AI helper**: paste a free Gemini key, or skip.
+5. Set up **IServ**: Lessn tries to find your school's IServ server automatically (via the school's website on OpenStreetMap). Enter your password, or skip.
+
 ## Features
 
-- **Home**: holiday banner with the holiday's name and countdown, a red alert for cancelled lessons, a live "Now" card, school announcements (WebUntis messages of the day), new IServ notifications and exams this week.
-- **Lessons**: double periods are merged or visibly linked, and cancelled lessons are striped red with a CANCELLED tag (in the week grid too).
-- **Week** grid with holidays filled in by name and a current-time line. Swipe to change weeks.
-- **Homework**, **Exams** (including tests found in AI summaries), **Grades** (from WebUntis if your school shares them, plus grades you add yourself, with averages).
-- **Attendance**: a calendar of days you were or weren't at school. If you turn on the location check, the app checks your location 10 minutes after your first lesson. If you're not at school it asks "Are you at school?" in a notification.
-- **Notifications**: reminders before each lesson and alerts for changes. **Do Not Disturb** can switch on automatically during lessons.
-- **IServ** with screens built into the app, so they follow your theme. It signs in with your IServ login (it can reuse your WebUntis password):
-  - **Messenger**: chats with unread badges, chat bubbles, live new messages, sending, and earlier messages. End-to-end encrypted messages can only be read on the IServ website.
-  - **E-Mail**: folders, inbox and reading mails. Replying and writing new mails open IServ's own editor.
-  - **Files**: browse your IServ files (WebDAV) and download them.
-  - **Calendar**: upcoming dates.
-  - **Notifications**: mark them as read.
-  - Everything else (tasks, forums, the full website) opens in an in-app IServ browser that signs you in for you and is recoloured to match your theme.
-- **Lesson recorder (beta)**: records a lesson (works with the screen off) and sends it to Google Gemini. You get topics, a summary, key points, homework and any tests that were mentioned, with dates. It understands German audio. You need a free Gemini API key from aistudio.google.com/apikey. **Only record with your teacher's and class's permission. In Germany, recording people without consent can be illegal (§201 StGB).**
-- **Offline**: the current week, the week before and the next 3 weeks are saved, plus homework, exams and grades.
-- **Languages**: English, Deutsch, Türkçe, Français (Menu → Settings).
-- **Directions to school** opens Google Maps.
+- **Home is your day plan**: holiday banner, cancelled-lesson alert, Now/Next card, homework due today and tomorrow, today's study-plan tasks, new IServ notifications, announcements, all lessons of the day, and exams this week.
+- **Tabs you choose**: Menu → Settings → Tabs. Pick up to 4 of Home, Week, Homework, Exams, IServ, AI, Grades, Attendance and Recorder, and change their order. Menu is always there and links to everything else.
+- **Homework from everywhere**: WebUntis homework, **IServ tasks** ("Aufgaben") and your own homework (tap **+**). Every item has an **AI button** that opens a chat about that task. The chat already knows the task and what your last recorded lessons covered, and you can send photos.
+- **AI helper**: free chats with photo upload, a tutor-style helper (hints first, full solutions if you ask) and quick-start questions.
+- **Exams**: tap an exam for **Study with AI** (explanations and quiz questions) and **Make a study plan**. The plan is built from your lesson summaries and spread over the days before the exam, with a checkbox for each task. Today's tasks show on Home.
+- **Lesson recorder (beta)**: records a lesson and turns it into a summary that feeds the homework help and study plans. **Only record with your teacher's and class's permission (§201 StGB).**
+- **IServ**: messenger, mail, files, calendar and notifications in the app's design. **IServ notifications** check for new IServ notifications and chat messages every 15 minutes, even when the app is closed.
+- **Week** grid, **Grades**, **Attendance** (with the optional "Are you at school?" location check), lesson reminders, Do Not Disturb during lessons, offline cache, and 4 languages (English, Deutsch, Türkçe, Français).
 
 ## Hidden customization
 
 There's no visible menu for it. To open it, either **long-press the big title** on any screen, or go to **Menu** and **tap the version text at the bottom 7 times**.
 
 Inside you can change:
-- the **theme**: Auto, Material Light, Material Dark, Liquid Glass Light, Liquid Glass Dark, or Black
+- the **theme**, out of 12: Auto, Material Light/Dark, Liquid Glass Light/Dark, Black, Sunset, Ocean, Forest, Paper, Neon and Pastel. Each theme has its own background, default font and animation style (slide, blur, bloom, wave, grow, page-flip, neon flicker, bounce).
+- the **font**: theme default, System, Inter, Poppins, Nunito, Outfit, Space Grotesk, Lora or JetBrains Mono. All are bundled, so they work offline.
 - the accent color, corner roundness, text size, font, density and lesson colors
 - animations on or off
 - each subject's color and name

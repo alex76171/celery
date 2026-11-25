@@ -4,6 +4,7 @@ import {
   toUntisDate, fromUntisDate, subjKey, subjName, subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge,
   stagger, openSheet, haptic,
 } from './core.js';
+import { allHomework, hwDoneAny, homeExtras, examId } from './assist.js';
 import {
   weekData, prepareDay, changes, isChanged, periodLabel, holidayFor, nextHoliday, visibleDays, timegridFor,
 } from './data.js';
@@ -203,7 +204,7 @@ export function viewToday() {
     const top = `${holidayHero(S.day)}
       ${cancelled.length ? `<div class="cancel-alert pop">${icon('ban')}<span><b>${esc(cancelled.length === 1 ? t('1 lesson cancelled') : t('{n} lessons cancelled', { n: cancelled.length }))}</b>${esc(cancelled.map((l) => subjName(l, true)).join(', '))}</span></div>` : ''}
       ${isToday ? nowCard(list) : ''}
-      ${isToday ? newsCards() + iservPreview() : ''}`;
+      ${isToday ? homeExtras() + newsCards() : ''}`;
     if (!list.length) {
       body = top + (hol ? '' : emptyState('coffee', t('No lessons'), t('Nothing scheduled for this day.')));
     } else {
@@ -314,18 +315,21 @@ export function viewWeek() {
 }
 
 // ---------------------------------------------------------------- Homework
-export function hwDone(h) { const m = store.doneHomework(); return h.id in m ? m[h.id] : h.completed; }
+export function hwDone(h) { return hwDoneAny(h.key ? h : { ...h, key: `u${h.id}`, source: 'untis' }); }
 
+const SRC_ICON = { untis: '', mine: 'user', iserv: 'school' };
 export function viewTasks() {
   const chips = [['open', t('To do')], ['done', t('Done')], ['all', t('All')]].map(([f, label]) => `<button class="chip ${S.hwFilter === f ? 'on' : ''}" data-act="hw-filter" data-f="${f}">${esc(label)}</button>`).join('');
-  if (!S.homework) return `<div class="chips">${chips}</div><div class="pad">${skeleton(4)}</div>`;
+  const fab = `<button class="fab" data-act="hw-add" aria-label="${esc(t('Add homework'))}">${icon('plus')}</button>`;
+  const all = allHomework();
+  if (!S.homework && !all.length) return `<div class="chips">${chips}</div><div class="pad">${skeleton(4)}${fab}</div>`;
   const today = toUntisDate(new Date());
-  let list = S.homework.slice().sort((a, b) => a.due - b.due);
-  if (S.hwFilter === 'open') list = list.filter((h) => !hwDone(h));
-  else if (S.hwFilter === 'done') list = list.filter(hwDone).reverse();
-  const open = S.homework.filter((h) => !hwDone(h) && h.due >= today).length;
+  let list = all.slice().sort((a, b) => a.due - b.due);
+  if (S.hwFilter === 'open') list = list.filter((h) => !hwDoneAny(h));
+  else if (S.hwFilter === 'done') list = list.filter(hwDoneAny).reverse();
+  const open = all.filter((h) => !hwDoneAny(h) && h.due >= today).length;
   if (!list.length) {
-    return `<div class="chips">${chips}</div><div class="pad">${S.hwFilter === 'open' ? emptyState('circle-check', t('All caught up'), t('No open homework.')) : emptyState('clipboard-list', t('Nothing here'))}</div>`;
+    return `<div class="chips">${chips}</div><div class="pad">${S.hwFilter === 'open' ? emptyState('circle-check', t('All caught up'), t('No open homework. Tap + to add your own.')) : emptyState('clipboard-list', t('Nothing here'))}${fab}</div>`;
   }
   const groups = {};
   list.forEach((h) => { (groups[h.due] ||= []).push(h); });
@@ -335,17 +339,18 @@ export function viewTasks() {
     const overdue = Number(due) < today;
     return `<div class="group"><div class="group-head ${overdue ? 'bad' : ''}"${stagger(i++)}><b>${esc(relDay(d))}</b><span>${esc(fmt(d, { day: 'numeric', month: 'short' }))}</span></div>
       ${items.map((h) => {
-        const done = hwDone(h);
+        const done = hwDoneAny(h);
         return `<div class="hw ${done ? 'done' : ''} ${overdue && !done ? 'overdue' : ''}" style="--c:${colorFor(h.subject)};--i:${Math.min(i++, 14)}">
-          <button class="check" data-act="hw-toggle" data-id="${h.id}" aria-label="${esc(t('Mark as done'))}">${icon('check')}</button>
-          <div class="hw-body"><div class="hw-subj">${esc(subjLabel(h.subject) || t('Homework'))}</div>
+          <button class="check" data-act="hw-check" data-key="${esc(h.key)}" aria-label="${esc(t('Mark as done'))}">${icon('check')}</button>
+          <button class="hw-body" data-act="hw-open" data-key="${esc(h.key)}"><div class="hw-subj">${SRC_ICON[h.source] ? icon(SRC_ICON[h.source], 'mini') : ''}${esc(subjLabel(h.subject) || (h.source === 'iserv' ? t('IServ task') : t('Homework')))}</div>
             <div class="hw-text">${esc(h.text)}</div>
             ${h.remark ? `<div class="hw-remark">${esc(h.remark)}</div>` : ''}
-            <div class="hw-meta">${esc(t('Given {d}', { d: fmt(fromUntisDate(h.date), { day: 'numeric', month: 'short' }) }))}${h.teacher ? ` · ${esc(h.teacher)}` : ''}${h.attachments.length ? ` · ${h.attachments.length} ${esc(t('attachments'))}` : ''}</div>
-          </div></div>`;
+            <div class="hw-meta">${h.date ? esc(t('Given {d}', { d: fmt(fromUntisDate(h.date), { day: 'numeric', month: 'short' }) })) : ''}${h.teacher ? ` · ${esc(h.teacher)}` : ''}${h.attachments.length ? ` · ${h.attachments.length} ${esc(t('attachments'))}` : ''}</div>
+          </button>
+          <button class="hw-ai" data-act="ai-homework" data-key="${esc(h.key)}" aria-label="${esc(t('Get help from AI'))}">${icon('sparkles')}</button></div>`;
       }).join('')}</div>`;
   }).join('');
-  return `<div class="chips">${chips}<span class="chip-note">${esc(t('{n} open', { n: open }))}</span></div><div class="pad">${html}</div>`;
+  return `<div class="chips">${chips}<span class="chip-note">${esc(t('{n} open', { n: open }))}</span></div><div class="pad">${html}${fab}</div>`;
 }
 
 // ---------------------------------------------------------------- Exams
@@ -360,7 +365,7 @@ function examCard(e, past, i) {
   const urgent = !past && n <= 3;
   const rooms = (e.rooms || []).map((r) => (typeof r === 'string' ? r : r.name)).join(', ');
   const teachers = (e.teachers || []).map((r) => (typeof r === 'string' ? r : r.name)).join(', ');
-  return `<div class="exam ${past ? 'past' : ''} ${urgent ? 'urgent' : ''}" style="--c:${colorFor(e.subject)};--i:${Math.min(i, 14)}">
+  return `<div class="exam ${past ? 'past' : ''} ${urgent ? 'urgent' : ''}" data-act="exam-open" data-id="${esc(examId(e))}" style="--c:${colorFor(e.subject)};--i:${Math.min(i, 14)}">
     <div class="exam-date"><b>${d.getDate()}</b><span>${esc(fmt(d, { month: 'short' }))}</span></div>
     <div class="exam-body">
       <div class="exam-top"><span class="exam-subj">${esc(subjLabel(e.subject) || t('Exam'))}</span>${past ? (e.grade ? badge({ cls: 'ok', icon: 'star', text: e.grade }) : '') : badge({ cls: urgent ? 'bad' : 'soft', icon: 'timer', text: inDays(d) })}</div>

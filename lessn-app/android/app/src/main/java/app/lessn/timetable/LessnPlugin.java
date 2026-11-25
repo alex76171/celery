@@ -226,6 +226,34 @@ public class LessnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setIServBackground(PluginCall call) {
+        Context ctx = getContext();
+        boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+        android.content.SharedPreferences.Editor e = Scheduler.prefs(ctx).edit();
+        e.putBoolean("is_enabled", enabled);
+        if (enabled) {
+            String host = call.getString("host");
+            if (!host.equals(Scheduler.prefs(ctx).getString("is_host", ""))) e.putBoolean("is_init", false).putLong("is_chat_ts", 0);
+            e.putString("is_host", host).putString("is_user", call.getString("username")).putString("is_pass", call.getString("password"));
+            e.putBoolean("is_chats", Boolean.TRUE.equals(call.getBoolean("chats", true)));
+        } else {
+            e.remove("is_pass");
+        }
+        e.apply();
+        androidx.work.WorkManager wm = androidx.work.WorkManager.getInstance(ctx);
+        if (enabled) {
+            androidx.work.PeriodicWorkRequest req = new androidx.work.PeriodicWorkRequest.Builder(IServWorker.class, 15, java.util.concurrent.TimeUnit.MINUTES)
+                .setConstraints(new androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+                .build();
+            wm.enqueueUniquePeriodicWork("iserv-check", androidx.work.ExistingPeriodicWorkPolicy.UPDATE, req);
+            wm.enqueue(new androidx.work.OneTimeWorkRequest.Builder(IServWorker.class).build());
+        } else {
+            wm.cancelUniqueWork("iserv-check");
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void davList(PluginCall call) {
         new Thread(() -> {
             try {

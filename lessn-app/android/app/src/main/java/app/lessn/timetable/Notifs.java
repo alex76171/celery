@@ -14,6 +14,7 @@ public final class Notifs {
     public static final String CH_LESSONS = "lessons";
     public static final String CH_PRESENCE = "presence";
     public static final String CH_RECORDING = "recording";
+    public static final String CH_ISERV = "iserv";
 
     private Notifs() {}
 
@@ -23,6 +24,7 @@ public final class Notifs {
         nm.createNotificationChannel(new NotificationChannel(CH_LESSONS, "Lessons", NotificationManager.IMPORTANCE_DEFAULT));
         nm.createNotificationChannel(new NotificationChannel(CH_PRESENCE, "Attendance check", NotificationManager.IMPORTANCE_HIGH));
         nm.createNotificationChannel(new NotificationChannel(CH_RECORDING, "Lesson recording", NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(new NotificationChannel(CH_ISERV, "IServ", NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     public static PendingIntent openApp(Context ctx) {

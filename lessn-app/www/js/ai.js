@@ -41,3 +41,47 @@ export async function summarizeAudio({ apiKey, model, base64, mime = 'audio/mp4'
   for (const k of ['topics', 'keyPoints', 'homework', 'tests', 'announcements']) if (!Array.isArray(out[k])) out[k] = [];
   return out;
 }
+
+async function gemini({ apiKey, model, contents, system, json = false, temperature = 0.5 }) {
+  if (!apiKey) throw new Error('Add your Gemini API key first.');
+  const res = await fetch(`${ENDPOINT}/${encodeURIComponent(model || DEFAULT_MODEL)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents,
+      ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+      generationConfig: { temperature, ...(json ? { responseMimeType: 'application/json' } : {}) },
+    }),
+  });
+  let j;
+  try { j = await res.json(); } catch { throw new Error(`AI service answered with HTTP ${res.status}.`); }
+  if (j.error) throw new Error(`AI: ${j.error.message || j.error.status}`);
+  const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+  if (!text) throw new Error('The AI did not answer. Try again.');
+  return text;
+}
+
+/**
+ * Multi-turn chat. messages: [{ role: 'user'|'model', text, images: [{ mime, data }] }]
+ */
+export function chat({ apiKey, model, messages, system }) {
+  const contents = messages.map((m) => ({
+    role: m.role,
+    parts: [...(m.images || []).filter((i) => i.data).map((i) => ({ inline_data: { mime_type: i.mime, data: i.data } })), { text: m.text || ' ' }],
+  }));
+  return gemini({ apiKey, model, contents, system, temperature: 0.6 });
+}
+
+/** Builds a day-by-day study plan for an exam. */
+export async function studyPlan({ apiKey, model, lang, exam, today, summaries }) {
+  const prompt = `Create a realistic study plan for a school student.
+Today is ${today}. The exam is on ${exam.date}: subject "${exam.subject}", "${exam.name}". ${exam.text ? `Details: ${exam.text}.` : ''}
+${summaries.length ? `Here are summaries of recent lessons in this subject. Base the plan on their topics:\n${summaries.map((s, i) => `Lesson ${i + 1} (${s.date}): ${s.title}. Topics: ${s.topics.join(', ')}. Key points: ${s.keyPoints.join('; ')}`).join('\n')}` : 'No lesson summaries are available, so plan around typical topics for this subject and keep tasks general.'}
+Spread the work from today until the day before the exam, 20–45 minutes per day, with a review day at the end. Skip days only if there are more than 10 days.
+Answer in ${({ en: 'English', de: 'German', tr: 'Turkish', fr: 'French' })[lang] || 'German'}. Return ONLY JSON:
+{"plan":[{"date":"YYYY-MM-DD","title":"short focus of the day","tasks":["concrete task"],"minutes":30}],"tips":["short tip"]}`;
+  const text = await gemini({ apiKey, model, contents: [{ role: 'user', parts: [{ text: prompt }] }], json: true, temperature: 0.4 });
+  const out = JSON.parse(text.replace(/^```(json)?|```$/g, '').trim());
+  if (!Array.isArray(out.plan)) throw new Error('The AI did not return a plan. Try again.');
+  return { plan: out.plan, tips: Array.isArray(out.tips) ? out.tips : [] };
+}

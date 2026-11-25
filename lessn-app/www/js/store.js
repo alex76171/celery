@@ -13,6 +13,9 @@ function remove(name) { try { localStorage.removeItem(KEY + name); } catch { /* 
 
 export const DEFAULTS = {
   // Visible settings
+  tabs: ['today', 'week', 'tasks', 'exams'],
+  onboarded: false,
+  iservNotify: true,
   lang: (navigator.language || 'en').slice(0, 2) === 'de' ? 'de' : 'en',
   startView: 'today',
   notifyLessons: false,
@@ -48,7 +51,7 @@ export const DEFAULTS = {
   showCountdown: true,
   haptics: true,
   appTitle: '',
-  font: 'system', // system | serif | mono
+  font: 'theme', // theme default or a bundled font
   subjectShortInGrid: true,
   subjectColors: {},
   subjectNames: {},
@@ -63,7 +66,7 @@ export const store = {
   saveSettings: (s) => write('settings', s),
   resetCustomization: () => {
     const s = store.settings();
-    const keys = ['lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
+    const keys = ['tabs', 'onboarded', 'lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
       'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiLang', 'keepAudio'];
     const keep = Object.fromEntries(keys.map((k) => [k, s[k]]));
     write('settings', keep);

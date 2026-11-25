@@ -181,6 +181,32 @@ export class IServ {
     }).catch(() => {});
   }
 
+  // ---------------------------------------------------------------- tasks ("Aufgaben")
+  /** IServ has no JSON for tasks, so this reads the task table of the web page. */
+  async exercises() {
+    if (!this.loggedIn) await this.login();
+    const res = await this.http('/iserv/exercise?filter%5Bstatus%5D=current');
+    const html = await res.text();
+    if (/name=["']_password["']/.test(html)) { this.loggedIn = false; throw err('IServ: please sign in again.', 'auth'); }
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const rows = [...doc.querySelectorAll('#crud-table tbody tr, table tbody tr')].filter((r) => r.querySelector('a[href*="/exercise/show/"]'));
+    const seen = new Set();
+    return rows.map((r) => {
+      const a = r.querySelector('a[href*="/exercise/show/"]');
+      const href = a.getAttribute('href');
+      const id = (href.match(/show\/(\d+)/) || [])[1] || href;
+      if (seen.has(id)) return null;
+      seen.add(id);
+      const dates = [...r.querySelectorAll('td')].map((td) => parseIServDate(td.getAttribute('data-sort') || td.textContent)).filter(Boolean);
+      const tags = [...r.querySelectorAll('.label, .badge, .tag')].map((x) => x.textContent.trim()).filter(Boolean);
+      const done = /done|erledigt|abgegeben|submitted/i.test(r.className + r.textContent);
+      return {
+        id: `is-${id}`, title: a.textContent.trim(), url: href, start: dates.length > 1 ? Math.min(...dates) : null,
+        due: dates.length ? Math.max(...dates) : null, tags, done,
+      };
+    }).filter(Boolean);
+  }
+
   // ---------------------------------------------------------------- calendar
   async events() {
     const j = await this.json('/iserv/calendar/api/upcoming');
@@ -302,6 +328,19 @@ export class IServ {
     if (!eventId) return Promise.resolve();
     return this.mxFetch(`/rooms/${encodeURIComponent(roomId)}/receipt/m.read/${encodeURIComponent(eventId)}`, { method: 'POST', body: '{}' }).catch(() => {});
   }
+}
+
+/** Turns IServ date cells (unix time, ISO or dd.mm.yyyy) into a yyyymmdd number. */
+function parseIServDate(v) {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  let d = null;
+  if (/^\d{9,11}$/.test(s)) d = new Date(Number(s) * 1000);
+  else if (/^\d{12,14}$/.test(s)) d = new Date(Number(s));
+  else if (/^\d{4}-\d{2}-\d{2}/.test(s)) d = new Date(s.slice(0, 10));
+  else { const m = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/); if (m) d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])); }
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
 const shortId = (id) => String(id || '').replace(/^@/, '').split(':')[0];

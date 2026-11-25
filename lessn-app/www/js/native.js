@@ -24,6 +24,7 @@ export const native = {
   readFile: (path) => call('readFileBase64', { path }),
   deleteFile: (path) => call('deleteFile', { path }).catch(() => {}),
   davList: (opts) => call('davList', opts),
+  iservBackground: (opts) => call('setIServBackground', opts).catch(() => {}),
   download: (opts) => (hasNative() ? call('download', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
   openIServ: (opts) => (hasNative() ? call('openIServ', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
 };

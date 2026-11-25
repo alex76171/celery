@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.1.0';
+export const VERSION = '2.2.0';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -135,23 +135,45 @@ export function toast(msg, kind = '') {
 export const THEMES = [
   ['auto', 'Auto'], ['material-light', 'Material Light'], ['material-dark', 'Material Dark'],
   ['glass-light', 'Liquid Glass Light'], ['glass-dark', 'Liquid Glass Dark'], ['amoled', 'Black'],
+  ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'], ['paper', 'Paper'], ['neon', 'Neon'], ['pastel', 'Pastel'],
+];
+// family = surface style, motion = how screens animate in, font = default font of the theme
+const THEME_META = {
+  'material-light': { family: 'material', motion: 'slide', font: 'system' },
+  'material-dark': { family: 'material', motion: 'slide', font: 'system', dark: true },
+  'glass-light': { family: 'glass', motion: 'blur', font: 'inter' },
+  'glass-dark': { family: 'glass', motion: 'blur', font: 'inter', dark: true },
+  amoled: { family: 'material', motion: 'fade', font: 'system', dark: true },
+  sunset: { family: 'glass', motion: 'bloom', font: 'outfit' },
+  ocean: { family: 'glass', motion: 'wave', font: 'outfit', dark: true },
+  forest: { family: 'material', motion: 'grow', font: 'nunito', dark: true },
+  paper: { family: 'paper', motion: 'flip', font: 'lora' },
+  neon: { family: 'neon', motion: 'flicker', font: 'space', dark: true },
+  pastel: { family: 'material', motion: 'bounce', font: 'nunito' },
+};
+export const FONTS = [
+  ['theme', 'Theme default'], ['system', 'System'], ['inter', 'Inter'], ['poppins', 'Poppins'], ['nunito', 'Nunito'],
+  ['outfit', 'Outfit'], ['space', 'Space Grotesk'], ['lora', 'Lora'], ['mono', 'JetBrains Mono'],
 ];
 const LEGACY = { system: 'auto', light: 'material-light', dark: 'material-dark' };
 export function currentTheme() {
   const th = LEGACY[S.settings.theme] || S.settings.theme;
-  if (th === 'auto') return matchMedia('(prefers-color-scheme: dark)').matches ? 'material-dark' : 'material-light';
+  if (th === 'auto' || !THEME_META[th]) return matchMedia('(prefers-color-scheme: dark)').matches ? 'material-dark' : 'material-light';
   return th;
 }
-export const isDark = () => /dark|amoled/.test(currentTheme());
+export const themeMeta = () => THEME_META[currentTheme()];
+export const isDark = () => !!themeMeta().dark;
 export function applyTheme() {
   const s = S.settings;
   const root = document.documentElement;
   const theme = currentTheme();
   root.dataset.theme = theme;
-  root.dataset.family = theme.startsWith('glass') ? 'glass' : 'material';
-  root.dataset.dark = isDark() ? '1' : '0';
+  const meta = themeMeta();
+  root.dataset.family = meta.family;
+  root.dataset.motion = meta.motion;
+  root.dataset.dark = meta.dark ? '1' : '0';
   root.dataset.density = s.density;
-  root.dataset.font = s.font;
+  root.dataset.font = !s.font || s.font === 'theme' ? meta.font : s.font;
   root.dataset.anim = s.animations ? '1' : '0';
   root.lang = s.lang;
   root.style.setProperty('--accent', s.accent);

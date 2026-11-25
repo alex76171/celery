@@ -8,7 +8,8 @@ import { native } from './native.js';
 import {
   refresh, loadWeek, loadHomework, loadExams, scheduleNative, iservClient, loadIServ, weekKey,
 } from './data.js';
-import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone } from './views.js';
+import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone, allExams } from './views.js';
+import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup } from './onboarding.js';
 import {
   viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
   openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
@@ -17,23 +18,23 @@ import {
 } from './features.js';
 import { renderLogin, bindLogin } from './login.js';
 import * as IS from './iserv-ui.js';
+import * as A from './assist.js';
 
-const TABS = [
-  { id: 'today', label: 'Home', icon: 'house' },
-  { id: 'week', label: 'Week', icon: 'calendar-range' },
-  { id: 'tasks', label: 'Homework', icon: 'list-checks' },
-  { id: 'exams', label: 'Exams', icon: 'graduation-cap' },
-  { id: 'more', label: 'Menu', icon: 'layout-grid' },
-];
-const SUBVIEWS = {
-  grades: 'Grades', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder',
+const tabList = () => [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }];
+const TITLES = {
+  grades: 'Grades', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
   'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications',
+  today: 'Home', week: 'Timetable', tasks: 'Homework', exams: 'Exams',
 };
-const PARENT = { 'is-chat': 'iserv', 'is-mail': 'iserv', 'is-files': 'iserv', 'is-cal': 'iserv', 'is-notes': 'iserv', 'is-room': 'is-chat' };
+const PARENT = { 'is-chat': 'iserv', 'is-mail': 'iserv', 'is-files': 'iserv', 'is-cal': 'iserv', 'is-notes': 'iserv', 'is-room': 'is-chat', 'ai-chat': 'ai' };
+const isRoot = (v) => v === 'more' || A.userTabs().includes(v);
 const parentOf = (v) => PARENT[v] || 'more';
-const ORDER = ['today', 'week', 'tasks', 'exams', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-room'];
+const rootOf = (v) => { let x = v; for (let i = 0; i < 4 && !isRoot(x); i++) x = parentOf(x); return x; };
+const SUBVIEWS = new Proxy({}, { get: (_, v) => (typeof v === 'string' && !isRoot(v) ? TITLES[v] || v : undefined) });
+const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-room'];
 
 // ---------------------------------------------------------------- shell
+const navHtml = () => `<nav class="tabs"><span class="tab-ind" id="tab-ind"></span>${tabList().map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>`;
 function renderShell() {
   document.body.innerHTML = `
   <div class="bg-blobs" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -48,7 +49,7 @@ function renderShell() {
     </header>
     <div id="banner"></div>
     <main id="main"><div id="ptr">${icon('refresh-cw')}</div><div id="content"></div></main>
-    <nav class="tabs"><span class="tab-ind" id="tab-ind"></span>${TABS.map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>
+    ${navHtml()}
   </div>
   <div id="sheet-root"></div>
   <div id="toast" class="toast"></div>`;
@@ -64,8 +65,8 @@ export function updateHeader() {
     today: S.settings.appTitle || relDay(S.day), week: S.element ? S.element.label : t('Timetable'),
     tasks: t('Homework'), exams: t('Exams'), more: t('Menu'),
   };
-  title.textContent = v === 'is-room' ? IS.roomTitle() : titles[v] || t(SUBVIEWS[v] || '');
-  $('#app').classList.toggle('chat-mode', v === 'is-room');
+  title.textContent = v === 'is-room' ? IS.roomTitle() : v === 'ai-chat' ? A.chatTitle() : titles[v] || t(TITLES[v] || '');
+  $('#app').classList.toggle('chat-mode', v === 'is-room' || v === 'ai-chat');
   const now = toUntisDate(new Date());
   const subs = {
     today: fmt(S.day, { weekday: 'long', day: 'numeric', month: 'long' }),
@@ -83,8 +84,8 @@ export function updateHeader() {
   $('#btn-back').hidden = !SUBVIEWS[v];
   const offToday = (v === 'today' && !sameDay(S.day, new Date())) || (v === 'week' && !sameDay(S.week, mondayOf(new Date())));
   $('#btn-today').hidden = !offToday;
-  const active = SUBVIEWS[v] ? 'more' : v;
-  TABS.forEach((x) => $(`#tab-${x.id}`).classList.toggle('on', x.id === active));
+  const active = rootOf(v);
+  tabList().forEach((x) => $(`#tab-${x.id}`)?.classList.toggle('on', x.id === active));
   moveIndicator(active);
   $('#banner').innerHTML = S.element && (v === 'week' || v === 'today')
     ? `<div class="viewing">${icon('eye')}<span>${esc(t('Viewing'))} <b>${esc(S.element.label)}</b></span><button data-act="clear-element">${icon('x')}${esc(t('Back to mine'))}</button></div>` : '';
@@ -111,9 +112,9 @@ export function render() {
   const views = {
     today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance,
     recorder: viewRecorder, iserv: IS.viewIServHub, 'is-chat': IS.viewChats, 'is-room': IS.viewRoom, 'is-mail': IS.viewMail,
-    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes,
+    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, ai: A.viewAI, 'ai-chat': A.viewAIChat,
   };
-  if (S.view === 'is-room' && lastView === 'is-room' && !S.anim) { updateHeader(); return; }
+  if ((S.view === 'is-room' || S.view === 'ai-chat') && lastView === S.view && !S.anim) { updateHeader(); return; }
   content.innerHTML = views[S.view]();
   const anim = S.anim && S.settings.animations ? `anim anim-${S.anim}` : '';
   content.className = '';
@@ -131,6 +132,7 @@ export function setView(v, dir) {
   haptic();
   render();
   if (v === 'tasks' && !S.homework) loadHomework();
+  if (v === 'tasks') A.loadIServTasks();
   if (v === 'exams' && !S.exams) loadExams();
   if (v === 'week' || v === 'today') loadWeek(S.week);
   if (v === 'iserv' && iservClient()) loadIServ();
@@ -312,9 +314,38 @@ function onClick(e) {
     case 'att-set': native.setPresence(d.d, d.st).then(() => { closeSheet(); loadPresence(); }); break;
     // iserv
     case 'iserv-connect': IS.connect(); break;
+    case 'iserv-notify': { const v = !S.settings.iservNotify; setS('iservNotify', v); const a = store.iserv(); native.iservBackground({ enabled: v && !!a, host: a?.host, username: a?.username, password: a?.password, chats: true }); rerenderSheet(); render(); break; }
     case 'iserv-open': if (d.url) IS.iservOpenUrl(d.url); else IS.iservOpen(d.path); break;
-    case 'iserv-logout': if (confirm(t('Disconnect IServ?'))) IS.disconnect(); break;
+    case 'iserv-logout': if (confirm(t('Disconnect IServ?'))) { IS.disconnect(); native.iservBackground({ enabled: false }); } break;
     case 'open-room': IS.openRoom(d.id); break;
+    case 'hw-add': A.openHomeworkForm(); break;
+    case 'hw-save': A.saveHomework(); break;
+    case 'hw-open': A.openHomework(d.key); break;
+    case 'hw-check': { const v = A.toggleHomework(d.key); el.closest('.hw')?.classList.toggle('done', v); setTimeout(render, 450); break; }
+    case 'hw-toggle-any': A.toggleHomework(d.key); closeSheet(); render(); break;
+    case 'hw-del': A.deleteHomework(d.key); break;
+    case 'ai-homework': A.chatForHomework(d.key); break;
+    case 'ai-new': A.newChat(); break;
+    case 'ai-open': A.openChat(d.id); break;
+    case 'ai-starter': A.sendAI(d.text); break;
+    case 'ai-unattach': A.unattach(Number(d.i)); break;
+    case 'exam-open': { const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.openExam(e); break; }
+    case 'ai-exam': { const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.chatForExam(e); break; }
+    case 'plan-make': { const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.makePlan(e); break; }
+    case 'plan-toggle': A.togglePlanTask(d.k); break;
+    case 'tabs-edit': A.openTabEditor(); break;
+    case 'tab-add': case 'tab-remove': case 'tab-move': {
+      A.editTabs(d.act.slice(4), d.k, Number(d.dir));
+      $('nav.tabs').outerHTML = navHtml();
+      updateHeader();
+      break;
+    }
+    case 'setup-ai': openAISetup(); break;
+    case 'setup-iserv': openIServSetup(); break;
+    case 'setup-ai-save': saveAISetup(); break;
+    case 'setup-ai-skip': closeSheet(); break;
+    case 'setup-iserv-save': saveIServSetup(); break;
+    case 'setup-iserv-skip': closeSheet(); break;
     case 'older-msgs': IS.olderMessages(); break;
     case 'is-rooms-retry': IS.retry('rooms'); break;
     case 'is-mail-retry': IS.retry('mail'); break;
@@ -348,6 +379,8 @@ function onInput(e) {
   const el = e.target;
   if (el.id === 'browse-q') { openBrowse.setQuery(el.value); return; }
   if (el.id === 'room-q') { IS.filterRooms(el.value); return; }
+  if (el.id === 'ai-file') { A.attachFiles(el.files); el.value = ''; return; }
+  if (el.id === 'ai-input') { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; return; }
   if (el.id === 'msg-input') { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; return; }
   if (el.dataset.subjName !== undefined) {
     const n = { ...S.settings.subjectNames };
@@ -378,12 +411,15 @@ let timers = [];
 export function startApp(api) {
   S.api = api || new Untis(S.account);
   if (!api) Object.assign(S.api, { personType: S.account.personType, personId: S.account.personId, klasseId: S.account.klasseId });
-  S.view = S.settings.startView;
+  S.view = isRoot(S.settings.startView) ? S.settings.startView : A.userTabs()[0];
   S.anim = 'fade';
   renderShell();
   render();
   refresh();
   scheduleNative();
+  maybeRunSetup();
+  const isAcc = store.iserv();
+  if (isAcc && S.settings.iservNotify) native.iservBackground({ enabled: true, host: isAcc.host, username: isAcc.username, password: isAcc.password, chats: true });
   timers.forEach(clearInterval);
   timers = [
     setInterval(() => {
@@ -406,9 +442,14 @@ function boot() {
   document.addEventListener('click', (e) => { if (S.api) onClick(e); });
   document.addEventListener('input', (e) => { if (S.api) onInput(e); });
   document.addEventListener('change', (e) => { if (S.api && e.target.type === 'color' && sheetState) rerenderSheet(); });
-  document.addEventListener('submit', (e) => { if (S.api && e.target.id === 'composer') { e.preventDefault(); IS.sendMessage(); } });
+  document.addEventListener('submit', (e) => {
+    if (!S.api) return;
+    if (e.target.id === 'composer') { e.preventDefault(); IS.sendMessage(); }
+    if (e.target.id === 'ai-composer') { e.preventDefault(); A.sendAI(); }
+  });
   document.addEventListener('keydown', (e) => {
     if (S.api && e.target.id === 'msg-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); IS.sendMessage(); }
+    if (S.api && e.target.id === 'ai-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); A.sendAI(); }
   });
   document.addEventListener('visibilitychange', () => {
     if (!S.api || document.hidden) return;
@@ -424,7 +465,7 @@ function boot() {
     if (closeSheet()) return;
     if (SUBVIEWS[S.view]) { setView(parentOf(S.view), 'right'); return; }
     if (S.element) { S.element = null; render(); return; }
-    if (S.view !== S.settings.startView) { setView(S.settings.startView, 'right'); return; }
+    if (S.view !== A.userTabs()[0]) { setView(A.userTabs()[0], 'right'); return; }
     safe(plugin('App').exitApp());
   });
   if (S.account) startApp();
