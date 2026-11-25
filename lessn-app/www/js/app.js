@@ -1,7 +1,7 @@
 // App shell: navigation, rendering, gestures, events and startup.
 import {
   S, t, $, $$, esc, icon, fmt, relDay, weekNumber, sameDay, startOfDay, addDays, mondayOf, toUntisDate, fromUntisDate, pad,
-  store, applyTheme, haptic, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
+  store, applyTheme, syncBars, haptic, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
 } from './core.js';
 import { Untis } from './api.js';
 import { native } from './native.js';
@@ -67,6 +67,7 @@ export function updateHeader() {
   };
   title.textContent = v === 'is-room' ? IS.roomTitle() : v === 'ai-chat' ? A.chatTitle() : titles[v] || t(TITLES[v] || '');
   $('#app').classList.toggle('chat-mode', v === 'is-room' || v === 'ai-chat');
+  syncBars();
   const now = toUntisDate(new Date());
   const subs = {
     today: fmt(S.day, { weekday: 'long', day: 'numeric', month: 'long' }),

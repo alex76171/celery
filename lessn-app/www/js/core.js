@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.2.0';
+export const VERSION = '2.2.1';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -179,9 +179,42 @@ export function applyTheme() {
   root.style.setProperty('--accent', s.accent);
   root.style.setProperty('--r', `${s.radius}px`);
   root.style.fontSize = `${16 * s.fontScale}px`;
-  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
-  $('meta[name=theme-color]')?.setAttribute('content', bg);
-  safe(plugin('SystemBars')?.setStyle({ style: isDark() ? 'DARK' : 'LIGHT' }));
+  syncBars();
+}
+
+// ---------------------------------------------------------------- system bars
+/** Resolves a CSS color variable to #rrggbb (also handles color-mix and transparency). */
+function cssColor(varName, fallback) {
+  const probe = document.createElement('i');
+  probe.style.cssText = `position:absolute;width:0;height:0;background:var(${varName})`;
+  document.body.appendChild(probe);
+  const v = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  let r; let g; let b; let a = 1;
+  let m = v.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+  if (m) { [r, g, b] = [m[1], m[2], m[3]].map(Number); if (m[4] != null) a = Number(m[4]); }
+  else if ((m = v.match(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?/))) {
+    [r, g, b] = [m[1], m[2], m[3]].map((x) => Number(x) * 255); if (m[4] != null) a = Number(m[4]);
+  } else return fallback;
+  if (a < 0.98) return fallback;
+  return `#${[r, g, b].map((x) => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('')}`;
+}
+
+let lastBars = '';
+/** Paints the status bar / camera cutout area and the navigation bar in the app's colors. */
+export function syncBars() {
+  if (!document.body) return;
+  const top = cssColor('--bg', isDark() ? '#000000' : '#ffffff');
+  const fam = document.documentElement.dataset.family;
+  const tabs = document.querySelector('nav.tabs');
+  const chat = document.getElementById('app')?.classList.contains('chat-mode');
+  const solidBottom = (tabs && !chat) || (chat && document.querySelector('.composer'));
+  const bottom = solidBottom && fam !== 'glass' ? cssColor('--surface', top) : top;
+  $('meta[name=theme-color]')?.setAttribute('content', top);
+  const key = `${top}|${bottom}|${isDark()}`;
+  if (key === lastBars) return;
+  lastBars = key;
+  safe(plugin('LessnNative')?.setBars({ top, bottom, dark: isDark() }));
 }
 
 // ---------------------------------------------------------------- components

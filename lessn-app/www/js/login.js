@@ -1,5 +1,5 @@
 // Two-step sign-in: 1) find your school, 2) enter your login.
-import { S, t, esc, icon, $, store, applyTheme } from './core.js';
+import { S, t, esc, icon, $, store, applyTheme, syncBars } from './core.js';
 import { LANGS } from './i18n.js';
 import { Untis, searchSchools, parseServerInput } from './api.js';
 import { startApp } from './app.js';
@@ -100,6 +100,7 @@ function schoolResults() {
 
 export function renderLogin() {
   document.body.innerHTML = `<div class="login ${L.step === 0 ? 'is-hello' : ''}">${blobs}${L.step === 0 ? step0() : L.step === 1 ? step1() : step2()}</div><div id="toast" class="toast"></div>`;
+  syncBars();
 }
 
 function keepCreds() {

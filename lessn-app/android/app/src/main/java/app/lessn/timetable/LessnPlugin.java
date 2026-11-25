@@ -253,6 +253,39 @@ public class LessnPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Colors the areas behind the status bar / camera cutout and the navigation bar like the app. */
+    @PluginMethod
+    public void setBars(PluginCall call) {
+        final android.app.Activity a = getActivity();
+        if (a == null) { call.resolve(); return; }
+        a.runOnUiThread(() -> {
+            try {
+                int top = android.graphics.Color.parseColor(call.getString("top", "#ffffff"));
+                int bottom = android.graphics.Color.parseColor(call.getString("bottom", call.getString("top", "#ffffff")));
+                boolean dark = Boolean.TRUE.equals(call.getBoolean("dark", false));
+                android.view.Window w = a.getWindow();
+                android.view.View decor = w.getDecorView();
+                decor.setBackground(new TwoTone(top, bottom));
+                if (getBridge() != null && getBridge().getWebView() != null) getBridge().getWebView().setBackgroundColor(top);
+                if (Build.VERSION.SDK_INT < 35) {
+                    w.setStatusBarColor(top);
+                    w.setNavigationBarColor(bottom);
+                }
+                if (Build.VERSION.SDK_INT >= 28) {
+                    android.view.WindowManager.LayoutParams lp = w.getAttributes();
+                    lp.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                    w.setAttributes(lp);
+                }
+                androidx.core.view.WindowInsetsControllerCompat c = androidx.core.view.WindowCompat.getInsetsController(w, decor);
+                c.setAppearanceLightStatusBars(!dark);
+                c.setAppearanceLightNavigationBars(!dark);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage());
+            }
+        });
+    }
+
     @PluginMethod
     public void davList(PluginCall call) {
         new Thread(() -> {
