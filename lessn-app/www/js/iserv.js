@@ -1,6 +1,11 @@
 // IServ client: login, notifications, mail, calendar, files (WebDAV) and the messenger (Matrix).
 // Cookies are kept by the Android cookie store, which the in-app IServ browser shares.
-import { native } from './native.js';
+import { native, hasNative } from './native.js';
+
+/** IServ wants the account name ("max.mustermann"), not the e-mail address. */
+export function normalizeIServUser(user) {
+  return String(user || '').trim().replace(/@.*$/, '').toLowerCase();
+}
 
 export function normalizeIServHost(input) {
   let s = (input || '').trim();
@@ -21,12 +26,31 @@ const b64 = (s) => btoa(unescape(encodeURIComponent(s))).replace(/=+$/, '');
 const isAuthPath = (url) => { try { return /^\/iserv\/auth\//.test(new URL(url).pathname); } catch { return false; } };
 
 /** Collects the values of all <input> fields of the first form on a page. */
-function formFields(html) {
+/** The form with the password field (login pages can have other forms before it). */
+function loginForm(html) {
+  return (html.match(/<form\b[\s\S]*?<\/form>/gi) || []).find((f) => /name=["']_password["']/i.test(f)) || null;
+}
+function errorText(html) {
+  const m = html.match(/<(div|p|span)[^>]*class="[^"]*(alert-danger|alert-error|text-danger|invalid-feedback)[^"]*"[^>]*>([\s\S]*?)<\/\1>/i);
+  return m ? m[3].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+}
+function loginError(code, message = '') {
+  const texts = {
+    rejected: message ? `IServ: ${message}` : 'IServ did not accept the login. Use your account name (e.g. max.mustermann, without @…) and your IServ password.',
+    twofactor: 'IServ: two-factor login is on. Sign in through the IServ button instead.',
+    session: 'IServ accepted the login but did not keep the session. Try again, or open IServ through the button.',
+    noform: 'No IServ login page found at this address. Check the IServ address.',
+    network: 'No connection to IServ.',
+  };
+  return err(texts[code] || texts.rejected, code === 'network' ? 'network' : 'auth');
+}
+function formFields(form) {
   const out = new URLSearchParams();
-  const form = (html.match(/<form[\s\S]*?<\/form>/i) || [html])[0];
   for (const tag of form.match(/<input\b[^>]*>/gi) || []) {
     const name = (tag.match(/\bname\s*=\s*["']([^"']+)["']/i) || [])[1];
     if (!name) continue;
+    const type = ((tag.match(/\btype\s*=\s*["']([^"']+)["']/i) || [])[1] || 'text').toLowerCase();
+    if (['submit', 'button', 'image'].includes(type) || (['checkbox', 'radio'].includes(type) && !/\bchecked\b/i.test(tag))) continue;
     const value = (tag.match(/\bvalue\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
     out.set(name, value.replace(/&amp;/g, '&'));
   }
@@ -40,7 +64,7 @@ function metaRefresh(html, base) {
 
 export class IServ {
   constructor({ host, username, password }) {
-    Object.assign(this, { host: normalizeIServHost(host), username, password });
+    Object.assign(this, { host: normalizeIServHost(host), username: normalizeIServUser(username), password });
     this.loggedIn = false;
     this.matrix = null; // { token, userId }
     this.loginPromise = null;
@@ -59,21 +83,34 @@ export class IServ {
   }
 
   async doLogin() {
+    if (hasNative()) {
+      // Native sign-in keeps every cookie across redirects and shares them with the app's web requests
+      const r = await native.iservLogin({ host: this.host, username: this.username, password: this.password });
+      if (r.ok) { this.loggedIn = true; this.matrix = null; return; }
+      throw loginError(r.code, r.message);
+    }
+    // Browser fallback (development only)
     // 1) open IServ, which redirects to the login form
     let res = await this.http('/iserv/');
     let html = await res.text();
     if (!isAuthPath(res.url || '') && !/name=["']_password["']/.test(html)) { this.loggedIn = true; return; }
-    const fields = formFields(html);
+    const form = loginForm(html);
+    if (!form) throw loginError('noform');
+    const fields = formFields(form);
     fields.set('_username', this.username);
     fields.set('_password', this.password);
-    const action = (html.match(/<form[^>]+action=["']([^"']+)["']/i) || [])[1];
+    const action = (form.match(/<form[^>]+action=["']([^"']+)["']/i) || [])[1];
     const target = action ? new URL(action.replace(/&amp;/g, '&'), res.url || this.base + '/iserv/auth/login').href : (res.url || `${this.base}/iserv/auth/login`);
     // 2) submit the form
     res = await this.http(target, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fields.toString() });
     html = await res.text();
-    if (/Anmeldung fehlgeschlagen|Login failed/i.test(html)) throw err('IServ: wrong username or password.', 'auth');
-    if (/Account existiert nicht/i.test(html)) throw err('IServ: this account does not exist.', 'auth');
-    if (/two_factor_login_form|twofactor/i.test(html + (res.url || ''))) throw err('IServ: two-factor login is on. Sign in through the IServ button instead.', 'auth');
+    for (let i = 0; i < 4; i++) {
+      const next = metaRefresh(html, res.url || this.base);
+      if (!next) break;
+      res = await this.http(next); html = await res.text();
+    }
+    if (/two_factor_login_form/i.test(html) || /\/twofactor/.test(res.url || '')) throw loginError('twofactor');
+    if (/name=["']_password["']/.test(html)) throw loginError('rejected', errorText(html));
     // 3) follow the single sign-on hops until we land inside IServ
     for (let i = 0; i < 4; i++) {
       const next = metaRefresh(html, res.url || this.base);
@@ -81,7 +118,7 @@ export class IServ {
       res = await this.http('/iserv/');
       html = await res.text();
       if (!isAuthPath(res.url || '') && !/name=["']_password["']/.test(html)) break;
-      if (/name=["']_password["']/.test(html)) throw err('IServ: wrong username or password.', 'auth');
+      if (/name=["']_password["']/.test(html)) throw loginError('session');
     }
     this.loggedIn = true;
     this.matrix = null;

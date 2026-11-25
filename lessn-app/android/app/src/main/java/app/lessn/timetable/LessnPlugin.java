@@ -253,6 +253,28 @@ public class LessnPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Signs into IServ natively and hands the session cookies to the WebView cookie store. */
+    @PluginMethod
+    public void iservLogin(PluginCall call) {
+        new Thread(() -> {
+            String host = call.getString("host");
+            IServSession s = new IServSession("https://" + host);
+            IServSession.Login l = s.login(call.getString("username"), call.getString("password"));
+            if (l.ok) {
+                android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+                for (java.util.Map.Entry<String, String> e : s.cookies.entrySet()) {
+                    cm.setCookie("https://" + host, e.getKey() + "=" + e.getValue() + "; Path=/; Secure");
+                }
+                cm.flush();
+            }
+            JSObject r = new JSObject();
+            r.put("ok", l.ok);
+            r.put("code", l.code);
+            r.put("message", l.message);
+            call.resolve(r);
+        }).start();
+    }
+
     /** Colors the areas behind the status bar / camera cutout and the navigation bar like the app. */
     @PluginMethod
     public void setBars(PluginCall call) {

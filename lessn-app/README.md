@@ -4,7 +4,7 @@ Lessn is an unofficial Android app for WebUntis. It shows your timetable, homewo
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-2.2.1.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-2.2.2.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.

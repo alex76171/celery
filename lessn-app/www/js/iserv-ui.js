@@ -4,7 +4,7 @@ import {
   PALETTE, isDark, sameDay, daysBetween, startOfDay,
 } from './core.js';
 import { native } from './native.js';
-import { IServ, normalizeIServHost } from './iserv.js';
+import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
 import { render, setView } from './app.js';
 
 // ---------------------------------------------------------------- state
@@ -84,7 +84,7 @@ function setupForm() {
 
 export async function connect() {
   const host = normalizeIServHost($('#is-host').value);
-  const username = $('#is-user').value.trim();
+  const username = normalizeIServUser($('#is-user').value);
   const password = $('#is-pass').value || S.account.password;
   if (!host || !username) { toast(t('Fill in the IServ address and username'), 'err'); return; }
   toast(t('Connecting…'));
@@ -96,7 +96,10 @@ export async function connect() {
     S.iservData = null;
     render();
     refreshHub();
-  } catch (e) { toast(t(e.message), 'err'); }
+  } catch (e) {
+    const hint = !$('#is-pass').value && e.code === 'auth' ? ` ${t('You left the password empty, so your WebUntis password was used. Enter your IServ password.')}` : '';
+    toast(t(e.message) + hint, 'err');
+  }
 }
 
 export async function refreshHub() {

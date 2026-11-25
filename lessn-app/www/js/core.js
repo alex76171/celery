@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.2.1';
+export const VERSION = '2.2.2';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);

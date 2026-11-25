@@ -456,7 +456,11 @@ export const DICT = {
   "Theme default": "Wie das Design",
   "IServ: please sign in again.": "IServ: Bitte melde dich erneut an.",
   "The AI did not answer. Try again.": "Die KI hat nicht geantwortet. Versuch es nochmal.",
-  "The AI did not return a plan. Try again.": "Die KI hat keinen Plan geliefert. Versuch es nochmal."
+  "The AI did not return a plan. Try again.": "Die KI hat keinen Plan geliefert. Versuch es nochmal.",
+  "IServ did not accept the login. Use your account name (e.g. max.mustermann, without @…) and your IServ password.": "IServ hat die Anmeldung abgelehnt. Nutze deinen Accountnamen (z. B. max.mustermann, ohne @…) und dein IServ-Passwort.",
+  "IServ accepted the login but did not keep the session. Try again, or open IServ through the button.": "IServ hat die Anmeldung angenommen, aber die Sitzung nicht gehalten. Versuch es nochmal oder öffne IServ über den Button.",
+  "No IServ login page found at this address. Check the IServ address.": "Unter dieser Adresse wurde keine IServ-Anmeldeseite gefunden. Prüfe die IServ-Adresse.",
+  "You left the password empty, so your WebUntis password was used. Enter your IServ password.": "Du hast das Passwort leer gelassen, daher wurde dein WebUntis-Passwort benutzt. Gib dein IServ-Passwort ein."
  },
  "tr": {
   "Timetable": "Ders programı",
@@ -912,7 +916,11 @@ export const DICT = {
   "Theme default": "Tema varsayılanı",
   "IServ: please sign in again.": "IServ: lütfen tekrar giriş yap.",
   "The AI did not answer. Try again.": "Yapay zekâ yanıt vermedi. Tekrar dene.",
-  "The AI did not return a plan. Try again.": "Yapay zekâ plan vermedi. Tekrar dene."
+  "The AI did not return a plan. Try again.": "Yapay zekâ plan vermedi. Tekrar dene.",
+  "IServ did not accept the login. Use your account name (e.g. max.mustermann, without @…) and your IServ password.": "IServ girişi kabul etmedi. Hesap adını (örn. max.mustermann, @… olmadan) ve IServ şifreni kullan.",
+  "IServ accepted the login but did not keep the session. Try again, or open IServ through the button.": "IServ girişi kabul etti ama oturumu tutmadı. Tekrar dene veya IServ'i düğmeyle aç.",
+  "No IServ login page found at this address. Check the IServ address.": "Bu adreste IServ giriş sayfası bulunamadı. IServ adresini kontrol et.",
+  "You left the password empty, so your WebUntis password was used. Enter your IServ password.": "Şifreyi boş bıraktın, bu yüzden WebUntis şifren kullanıldı. IServ şifreni gir."
  },
  "fr": {
   "Timetable": "Emploi du temps",
@@ -1368,6 +1376,10 @@ export const DICT = {
   "Theme default": "Selon le thème",
   "IServ: please sign in again.": "IServ : reconnecte-toi.",
   "The AI did not answer. Try again.": "L'IA n'a pas répondu. Réessaie.",
-  "The AI did not return a plan. Try again.": "L'IA n'a pas renvoyé de plan. Réessaie."
+  "The AI did not return a plan. Try again.": "L'IA n'a pas renvoyé de plan. Réessaie.",
+  "IServ did not accept the login. Use your account name (e.g. max.mustermann, without @…) and your IServ password.": "IServ a refusé la connexion. Utilise ton nom de compte (ex. max.mustermann, sans @…) et ton mot de passe IServ.",
+  "IServ accepted the login but did not keep the session. Try again, or open IServ through the button.": "IServ a accepté la connexion mais n'a pas gardé la session. Réessaie ou ouvre IServ avec le bouton.",
+  "No IServ login page found at this address. Check the IServ address.": "Aucune page de connexion IServ à cette adresse. Vérifie l'adresse IServ.",
+  "You left the password empty, so your WebUntis password was used. Enter your IServ password.": "Tu as laissé le mot de passe vide, ton mot de passe WebUntis a donc été utilisé. Saisis ton mot de passe IServ."
  }
 };

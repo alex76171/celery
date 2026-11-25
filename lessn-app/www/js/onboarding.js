@@ -1,7 +1,7 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
 import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast } from './core.js';
 import { native, hasNative } from './native.js';
-import { IServ, normalizeIServHost } from './iserv.js';
+import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
 import { render } from './app.js';
 import { refreshHub } from './iserv-ui.js';
 
@@ -111,7 +111,7 @@ const guessUser = () => {
 
 export async function saveIServSetup() {
   const host = normalizeIServHost($('#su-host').value);
-  const username = $('#su-user').value.trim();
+  const username = normalizeIServUser($('#su-user').value);
   const password = $('#su-pass').value || S.account.password;
   if (!host || !username) { IS.error = 'Fill in the IServ address and username'; keepInputs(rerenderSheet); return; }
   IS.state = 'connecting'; IS.error = ''; IS.host = host;
@@ -130,7 +130,8 @@ export async function saveIServSetup() {
     refreshHub();
     render();
   } catch (e) {
-    IS.state = 'manual'; IS.error = e.message;
+    IS.state = 'manual';
+    IS.error = !$('#su-pass').value && e.code === 'auth' ? `${t(e.message)} ${t('You left the password empty, so your WebUntis password was used. Enter your IServ password.')}` : e.message;
     keepInputs(rerenderSheet);
   }
 }

@@ -42,7 +42,10 @@ public class IServWorker extends Worker {
         if (host == null || user == null || pass == null) return Result.success();
         base = "https://" + host;
         try {
-            if (!login(user, pass)) return Result.success();
+            IServSession session = new IServSession(base);
+            IServSession.Login l = session.login(user, pass);
+            if (!l.ok) return "network".equals(l.code) ? Result.retry() : Result.success();
+            cookies.putAll(session.cookies);
             checkNotifications(ctx, p);
             if (p.getBoolean("is_chats", true)) checkChats(ctx, p);
             return Result.success();
@@ -116,41 +119,6 @@ public class IServWorker extends Worker {
     private static String metaRefresh(String html) {
         Matcher m = Pattern.compile("http-equiv=[\"']?refresh[\"']?[^>]*content=[\"'][^\"']*url=([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(html);
         return m.find() ? m.group(1).replace("&amp;", "&") : null;
-    }
-
-    private boolean login(String user, String pass) throws Exception {
-        Res r = get("/iserv/");
-        if (!r.body.contains("_password")) return true;
-        String form = r.body;
-        Matcher fm = Pattern.compile("<form[\\s\\S]*?</form>", Pattern.CASE_INSENSITIVE).matcher(r.body);
-        if (fm.find()) form = fm.group();
-        StringBuilder data = new StringBuilder();
-        Matcher im = Pattern.compile("<input\\b[^>]*>", Pattern.CASE_INSENSITIVE).matcher(form);
-        while (im.find()) {
-            String tag = im.group();
-            Matcher n = Pattern.compile("name\\s*=\\s*[\"']([^\"']+)[\"']").matcher(tag);
-            if (!n.find()) continue;
-            String name = n.group(1);
-            if (name.equals("_username") || name.equals("_password")) continue;
-            Matcher v = Pattern.compile("value\\s*=\\s*[\"']([^\"']*)[\"']").matcher(tag);
-            String value = v.find() ? v.group(1).replace("&amp;", "&") : "";
-            data.append(URLEncoder.encode(name, "UTF-8")).append('=').append(URLEncoder.encode(value, "UTF-8")).append('&');
-        }
-        data.append("_username=").append(URLEncoder.encode(user, "UTF-8")).append("&_password=").append(URLEncoder.encode(pass, "UTF-8"));
-        String action = r.url;
-        Matcher am = Pattern.compile("<form[^>]+action=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(form);
-        if (am.find()) action = new URL(new URL(r.url), am.group(1).replace("&amp;", "&")).toString();
-        Map<String, String> h = new HashMap<>();
-        h.put("Content-Type", "application/x-www-form-urlencoded");
-        Res res = request(action, "POST", data.toString(), h);
-        if (res.body.contains("Anmeldung fehlgeschlagen")) return false;
-        for (int i = 0; i < 4; i++) {
-            String next = metaRefresh(res.body);
-            if (next == null) break;
-            res = request(new URL(new URL(res.url), next).toString(), "GET", null, null);
-        }
-        Res check = get("/iserv/");
-        return !check.body.contains("_password");
     }
 
     // ------------------------------------------------------------ notifications
