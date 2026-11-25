@@ -2,7 +2,7 @@
 import {
   dd, S, t, esc, icon, fmt, fmtTime, relDay, inDays, sameDay, addDays, startOfDay, daysBetween, toUntisDate, fromUntisDate, pad,
   subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge, stagger, row, seg, toggle, openSheet, closeSheet,
-  rerenderSheet, toast, haptic, THEMES, FONTS, VERSION, currentTheme, isDark, nowMin, subjKey, subjName, durText,
+  rerenderSheet, toast, THEMES, FONTS, VERSION, currentTheme, isDark, nowMin, subjKey, subjName, durText,
 } from './core.js';
 import { LANGS } from './i18n.js';
 import { native, hasNative } from './native.js';
@@ -301,14 +301,12 @@ export async function recStart() {
     const title = cur ? `${subjName(cur)} · ${fmtTime(cur.start)}` : t('Lesson recording');
     await native.startRecording(title, 95);
     setRec({ startedAt: Date.now(), title, subject: cur ? subjKey(cur) : '', lessonKey: cur ? noteKey(cur) : '', date: toUntisDate(new Date()), start: cur?.start || nowMin() });
-    haptic('MEDIUM');
     render();
   } catch (e) { toast(t(e.message === 'permission' ? 'Microphone permission is needed' : e.message), 'err'); }
 }
 
 export async function recStop() {
   const rec = recState();
-  haptic('MEDIUM');
   let res;
   try { res = await native.stopRecording(); } catch (e) { toast(e.message, 'err'); return; }
   setRec(null);
@@ -527,7 +525,6 @@ export function openCustomize() {
       ${toggle('showPeriodNumbers', t('Show period numbers'))}
       ${toggle('showNowLine', t('Current time line in week view'))}
       ${toggle('showCountdown', t('Countdown on Home card'))}
-      ${toggle('haptics', t('Vibration feedback'))}
     </div>
     <div class="section-title">${esc(t('Title'))}</div>
     <div class="card"><div class="row-pad"><input class="field" data-key="appTitle" placeholder="${esc(t('Custom title on the Home screen'))}" value="${esc(st.appTitle)}" maxlength="30"></div></div>

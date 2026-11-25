@@ -50,7 +50,6 @@ export const DEFAULTS = {
   subjectLongNames: true,
   showNowLine: true,
   showCountdown: true,
-  haptics: true,
   appTitle: '',
   font: 'theme', // theme default or a bundled font
   subjectShortInGrid: true,

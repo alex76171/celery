@@ -308,6 +308,136 @@ public class LessnPlugin extends Plugin {
         });
     }
 
+    // ------------------------------------------------------------ generic binary-safe HTTP
+    @PluginMethod
+    public void rawRequest(PluginCall call) {
+        new Thread(() -> {
+            try {
+                String url = call.getString("url");
+                String method = call.getString("method", "GET");
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setRequestMethod(method);
+                c.setConnectTimeout(20000);
+                c.setReadTimeout(120000);
+                JSObject headers = call.getObject("headers", new JSObject());
+                java.util.Iterator<String> keys = headers.keys();
+                while (keys.hasNext()) { String k = keys.next(); c.setRequestProperty(k, headers.getString(k)); }
+                if (Boolean.TRUE.equals(call.getBoolean("cookies", false))) {
+                    String ck = android.webkit.CookieManager.getInstance().getCookie(url);
+                    if (ck != null) c.setRequestProperty("Cookie", ck);
+                }
+                byte[] body = null;
+                if (call.getString("bodyBase64") != null) body = Base64.decode(call.getString("bodyBase64"), Base64.DEFAULT);
+                else if (call.getString("bodyPath") != null) body = readAll(safeAnyFile(call.getString("bodyPath")));
+                if (body != null) {
+                    c.setDoOutput(true);
+                    c.setFixedLengthStreamingMode(body.length);
+                    try (java.io.OutputStream o = c.getOutputStream()) { o.write(body); }
+                }
+                int code = c.getResponseCode();
+                java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                byte[] data = in == null ? new byte[0] : readStream(in);
+                JSObject r = new JSObject();
+                r.put("status", code);
+                r.put("contentType", c.getContentType());
+                if (Boolean.TRUE.equals(call.getBoolean("base64", false))) r.put("data", Base64.encodeToString(data, Base64.NO_WRAP));
+                else r.put("data", new String(data, java.nio.charset.StandardCharsets.UTF_8));
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Request failed" : e.getMessage());
+            }
+        }).start();
+    }
+
+    private static byte[] readStream(java.io.InputStream in) throws java.io.IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[65536];
+        int n;
+        while ((n = in.read(buf)) > 0) { out.write(buf, 0, n); if (out.size() > 40_000_000) break; }
+        in.close();
+        return out.toByteArray();
+    }
+    private static byte[] readAll(File f) throws java.io.IOException { return readStream(new FileInputStream(f)); }
+
+    /** Files the app itself wrote (recordings, voice messages). */
+    private File safeAnyFile(String path) throws Exception {
+        File f = new File(path).getCanonicalFile();
+        String files = getContext().getFilesDir().getCanonicalPath();
+        String cache = getContext().getCacheDir().getCanonicalPath();
+        if (!f.getPath().startsWith(files) && !f.getPath().startsWith(cache)) throw new SecurityException("Invalid path");
+        return f;
+    }
+
+    // ------------------------------------------------------------ voice messages
+    private android.media.MediaRecorder voice;
+    private File voiceFile;
+    private long voiceStart;
+
+    @PluginMethod
+    public void voiceStart(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { call.reject("permission"); return; }
+        try {
+            voiceStopQuiet();
+            voiceFile = new File(getContext().getCacheDir(), "voice_" + System.currentTimeMillis() + ".m4a");
+            voice = Build.VERSION.SDK_INT >= 31 ? new android.media.MediaRecorder(getContext()) : new android.media.MediaRecorder();
+            voice.setAudioSource(android.media.MediaRecorder.AudioSource.MIC);
+            voice.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4);
+            voice.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC);
+            voice.setAudioChannels(1);
+            voice.setAudioSamplingRate(44100);
+            voice.setAudioEncodingBitRate(64000);
+            voice.setOutputFile(voiceFile.getAbsolutePath());
+            voice.prepare();
+            voice.start();
+            voiceStart = System.currentTimeMillis();
+            call.resolve();
+        } catch (Exception e) {
+            voice = null;
+            call.reject(e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void voiceStop(PluginCall call) {
+        if (voice == null) { call.reject("not recording"); return; }
+        long dur = System.currentTimeMillis() - voiceStart;
+        boolean cancel = Boolean.TRUE.equals(call.getBoolean("cancel", false));
+        try { voice.stop(); } catch (Exception ignored) { }
+        voice.release();
+        voice = null;
+        if (cancel || dur < 600) { if (voiceFile != null) voiceFile.delete(); call.resolve(new JSObject().put("cancelled", true)); return; }
+        JSObject r = new JSObject();
+        r.put("path", voiceFile.getAbsolutePath());
+        r.put("duration", dur);
+        r.put("size", voiceFile.length());
+        call.resolve(r);
+    }
+
+    private void voiceStopQuiet() {
+        if (voice != null) { try { voice.stop(); } catch (Exception ignored) { } voice.release(); voice = null; }
+    }
+
+    // ------------------------------------------------------------ WebDAV (IServ files)
+    @PluginMethod
+    public void davRequest(PluginCall call) {
+        new Thread(() -> {
+            try {
+                java.util.Map<String, String> extra = new java.util.HashMap<>();
+                JSObject h = call.getObject("headers", new JSObject());
+                java.util.Iterator<String> keys = h.keys();
+                while (keys.hasNext()) { String k = keys.next(); extra.put(k, h.getString(k)); }
+                byte[] body = call.getString("bodyBase64") != null ? Base64.decode(call.getString("bodyBase64"), Base64.DEFAULT) : null;
+                Dav.Result r = Dav.request(call.getString("host"), call.getString("method"), call.getString("path"), call.getString("username"), call.getString("password"), extra, body);
+                JSObject o = new JSObject();
+                o.put("status", r.status);
+                o.put("body", r.body);
+                call.resolve(o);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "WebDAV error" : e.getMessage());
+            }
+        }).start();
+    }
+
     @PluginMethod
     public void davList(PluginCall call) {
         new Thread(() -> {

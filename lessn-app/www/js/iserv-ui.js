@@ -1,6 +1,6 @@
 // Custom IServ screens: hub, messenger, mail, files, calendar and notifications.
 import {
-  seg, S, t, $, esc, icon, fmt, relDay, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, toast, haptic, hash,
+  seg, S, t, $, esc, icon, fmt, relDay, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, toast, hash,
   PALETTE, isDark, sameDay, daysBetween, startOfDay,
 } from './core.js';
 import { native } from './native.js';
@@ -58,7 +58,7 @@ export function viewIServHub() {
     ['is-files', 'folder', t('Files'), 0],
     ['is-cal', 'calendar-days', t('Calendar'), 0],
     ['is-notes', 'bell', t('Notifications'), unreadNotes],
-    ['web:exercise', 'clipboard-list', t('Tasks'), 0],
+    ['is-tasks', 'clipboard-list', t('Tasks'), 0],
   ];
   const recent = (d.notifications || []).slice(0, 3);
   return `<div class="pad">
@@ -69,6 +69,8 @@ export function viewIServHub() {
     </div>
     <div class="card list-card"${stagger(1)}>${tiles.map(([v, ic, label, n]) => `<button class="row" data-act="${v.startsWith('web:') ? 'iserv-open' : 'nav'}" data-view="${v}" data-path="${v.startsWith('web:') ? v.slice(4) : ''}">
       <span class="row-ic tint" style="--c:${PALETTE[hash(v) % PALETTE.length]}">${icon(ic)}</span><span class="row-text"><b>${esc(label)}</b></span>${n ? `<em class="count">${n > 99 ? '99+' : n}</em>` : ''}${icon(v.startsWith('web:') ? 'external-link' : 'chevron-right', 'row-chev')}</button>`).join('')}</div>
+    <div class="section-title">${icon('layout-grid')}${esc(t('More IServ'))}</div>
+    <div class="card list-card">${MORE_MODULES.map(([path, ic, label]) => `<button class="row" data-act="iserv-open" data-path="${path}"><span class="row-ic tint" style="--c:${PALETTE[hash(path) % PALETTE.length]}">${icon(ic)}</span><span class="row-text"><b>${esc(t(label))}</b></span>${icon('external-link', 'row-chev')}</button>`).join('')}</div>
     ${recent.length ? `<div class="section-title">${icon('bell')}${esc(t('Latest'))}</div><div class="card">${recent.map((n) => noteRow(n)).join('')}</div>` : ''}
     ${(I.rooms || []).filter((r) => r.unread).slice(0, 3).length ? `<div class="section-title">${icon('message-square')}${esc(t('Unread chats'))}</div><div class="card">${I.rooms.filter((r) => r.unread).slice(0, 3).map(roomRow).join('')}</div>` : ''}
     <div class="card" style="margin-top:16px"><button class="row danger" data-act="iserv-logout"><span class="row-ic">${icon('log-out')}</span><span class="row-text"><b>${esc(t('Disconnect IServ'))}</b></span></button></div>
@@ -117,6 +119,50 @@ export async function refreshHub() {
   loadRooms();
 }
 
+const MORE_MODULES = [
+  ['forum', 'messages-square', 'Forums'], ['videoconference', 'video', 'Video conferences'], ['news', 'newspaper', 'News'],
+  ['poll', 'chart-bar', 'Polls'], ['plan', 'clipboard-list', 'Plans'], ['booking', 'calendar-check', 'Room booking'],
+  ['addressbook', 'book-user', 'Address book'], ['profile', 'user', 'My profile'],
+];
+
+// ---------------------------------------------------------------- tasks ("Aufgaben")
+export function viewTasksIServ() {
+  const c = client();
+  if (!S.iservTasks && !I.error.tasks) {
+    task('tasks', async () => { S.iservTasks = await c.exercises(); store.setCache('is-tasks', S.iservTasks); });
+    return `<div class="pad">${skeleton(5)}</div>`;
+  }
+  if (!S.iservTasks) return `<div class="pad">${errBox('tasks', 'is-tasks-retry')}</div>`;
+  const today = Number(`${new Date().getFullYear()}${pad(new Date().getMonth() + 1)}${pad(new Date().getDate())}`);
+  const list = S.iservTasks.slice().sort((a, b) => (a.due || 99999999) - (b.due || 99999999));
+  if (!list.length) return `<div class="pad">${emptyState('clipboard-list', t('No current tasks'))}</div>`;
+  let i = 0;
+  return `<div class="pad"><div class="card">${list.map((x) => {
+    const d = x.due ? new Date(Math.floor(x.due / 10000), Math.floor(x.due / 100) % 100 - 1, x.due % 100) : null;
+    const late = x.due && x.due < today && !x.done;
+    return `<button class="row" data-act="is-task" data-id="${esc(x.id)}"${stagger(i++)}>
+      <span class="row-ic tint" style="--c:${x.done ? '#30a46c' : late ? '#e5484d' : PALETTE[hash(x.tags[0] || x.title) % PALETTE.length]}">${icon(x.done ? 'circle-check' : 'clipboard-list')}</span>
+      <span class="row-text"><b>${esc(x.title)}</b><small>${[x.tags.join(', '), d ? `${t('Due')} ${relDay(d)}` : ''].filter(Boolean).map(esc).join(' · ')}</small></span>${icon('chevron-right', 'row-chev')}</button>`;
+  }).join('')}</div></div>`;
+}
+
+export async function openTask(id) {
+  const x = S.iservTasks?.find((y) => y.id === id);
+  if (!x) return;
+  let det = null;
+  let error = '';
+  const build = () => `<div class="d-head" style="--c:${S.settings.accent}"><div class="d-chip">${esc(x.tags[0] || 'IServ')}</div><h2>${esc(x.title)}</h2>
+      ${x.due ? `<p>${esc(t('Due'))} ${esc(relDay(new Date(Math.floor(x.due / 10000), Math.floor(x.due / 100) % 100 - 1, x.due % 100)))}</p>` : ''}</div>
+    ${error ? `<div class="notice warn">${icon('circle-alert')}<span>${esc(t(error))}</span></div>` : !det ? skeleton(3) : `
+      ${det.text ? `<div class="card"><p class="sum-text">${esc(det.text)}</p></div>` : ''}
+      ${det.files.length ? `<div class="section-title">${icon('paperclip')}${esc(t('Attachments'))}</div><div class="card">${det.files.map((f) => `<button class="row" data-act="iserv-open" data-url="${esc(f.href)}"><span class="row-ic">${icon('file')}</span><span class="row-text"><b>${esc(f.name)}</b></span>${icon('external-link', 'row-chev')}</button>`).join('')}</div>` : ''}`}
+    <button class="ai-cta" data-act="ai-homework" data-key="${esc(x.id)}"><span class="ai-orb">${icon('sparkles')}</span><span><b>${esc(t('Get help from AI'))}</b><small>${esc(t('Ask questions or send a photo of the task'))}</small></span>${icon('chevron-right', 'row-chev')}</button>
+    <button class="btn" data-act="iserv-open" data-url="${esc(x.url)}">${icon('upload')}${esc(t('Hand in on IServ'))}</button>`;
+  openSheet(build, { full: true });
+  try { det = await client().exerciseDetails(x.url); } catch (e) { error = e.message; }
+  const body = $('.sheet-body'); if (body) body.innerHTML = build();
+}
+
 // ---------------------------------------------------------------- messenger
 function roomRow(r) {
   const last = r.last ? (r.last.body == null ? t('Encrypted message') : `${r.last.mine ? `${t('You')}: ` : !r.direct ? `${r.last.sender}: ` : ''}${r.last.body}`) : '';
@@ -143,6 +189,7 @@ export function viewChats() {
   const list = I.rooms.filter((r) => !roomQuery || r.name.toLowerCase().includes(roomQuery.toLowerCase()));
   return `<div class="pad">
     <label class="search">${icon('search')}<input id="room-q" placeholder="${esc(t('Search chats'))}" value="${esc(roomQuery)}" autocomplete="off"></label>
+    <button class="fab" data-act="new-chat" aria-label="${esc(t('New chat'))}">${icon('square-pen')}</button>
     ${errBox('rooms')}
     ${list.length ? `<div class="card chat-list">${list.map(roomRow).join('')}</div>` : emptyState('message-square', t('No chats'))}
   </div>`;
@@ -157,7 +204,7 @@ export function filterRooms(q) {
 
 export async function openRoom(id) {
   const r = (I.rooms || []).find((x) => x.id === id) || { id, name: 'Chat' };
-  I.room = { id, name: r.name, direct: r.direct, messages: null, end: null };
+  I.room = { id, name: r.name, direct: r.direct, encrypted: !!r.encrypted, messages: null, end: null };
   r.unread = 0;
   setView('is-room', 'left');
   const c = client();
@@ -204,14 +251,16 @@ function messagesHtml(list) {
     const tail = !next || next.sender !== m.sender || !sameDay(new Date(next.ts), d);
     const showName = !m.mine && !I.room.direct && lastSender !== m.sender;
     lastSender = m.sender;
-    const body = m.encrypted
-      ? `<i class="enc">${icon('lock')}${esc(t('Encrypted message. Open it on the IServ website.'))}</i>`
-      : m.kind === 'm.image' ? `<span class="att">${icon('image')}${esc(t('Photo'))}</span>`
-        : m.kind === 'm.file' ? `<span class="att">${icon('paperclip')}${esc(m.file)}</span>`
-          : esc(m.body).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-    return `${sep}<div class="msg ${m.mine ? 'me' : 'them'} ${tail ? 'tail' : ''}">
+    const media = m.kind === 'm.image' || m.kind === 'm.audio' || m.kind === 'm.file' || m.kind === 'm.video';
+    const body = m.redacted ? `<i class="enc">${icon('ban')}${esc(t('Message deleted'))}</i>`
+      : m.encrypted ? `<i class="enc">${icon('lock')}${esc(t('Encrypted message. Open it on the IServ website.'))}</i>`
+        : m.kind === 'm.image' ? `<button class="m-img" data-act="img-view" data-mxc="${esc(m.mxc || m.localSrc || '')}" style="aspect-ratio:${m.info?.w && m.info?.h ? `${m.info.w}/${m.info.h}` : '4/3'}">${m.localSrc ? `<img src="${m.localSrc}" alt="">` : mediaCache[m.mxc] ? `<img src="${mediaCache[m.mxc]}" alt="">` : `<span class="m-load">${icon('image')}</span>`}</button>`
+          : m.kind === 'm.audio' ? `<button class="m-voice" data-act="voice-play" data-mxc="${esc(m.mxc)}" data-id="${esc(m.id)}"><span class="vp-ic">${icon(playing.id === m.id && playing.on ? 'pause' : 'play')}</span><span class="vp-bars">${bars(m.id)}</span><span class="vp-t">${fmtDur(m.info?.duration)}</span></button>`
+            : m.kind === 'm.file' || m.kind === 'm.video' ? `<button class="m-file" data-act="msg-file" data-mxc="${esc(m.mxc)}" data-name="${esc(m.filename)}"><span class="file-ic">${icon(fileIcon({ name: m.filename, type: m.info?.mimetype || '' }))}</span><span><b>${esc(m.filename)}</b><small>${esc(sizeText(m.info?.size || 0))}</small></span>${icon('download', 'row-chev')}</button>`
+              : esc(m.body).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    return `${sep}<div class="msg ${m.mine ? 'me' : 'them'} ${tail ? 'tail' : ''} ${m.pending ? 'pending' : ''}" data-msg="${esc(m.id)}">
       ${!m.mine && !I.room.direct ? (tail ? avatar(m.name, 'sm') : '<span class="av-sp"></span>') : ''}
-      <div class="bubble" ${!m.mine ? `style="--c:${PALETTE[hash(m.name) % PALETTE.length]}"` : ''}>${showName ? `<b class="who">${esc(m.name)}</b>` : ''}<span class="txt">${body}</span><small>${timeOf(m.ts)}</small></div>
+      <div class="bubble ${media && !m.redacted ? 'has-media' : ''}" ${!m.mine ? `style="--c:${PALETTE[hash(m.name) % PALETTE.length]}"` : ''}>${showName ? `<b class="who">${esc(m.name)}</b>` : ''}<span class="txt">${body}</span><small>${m.pending ? icon('clock', 'mini') : ''}${timeOf(m.ts)}</small></div>
     </div>`;
   }).join('');
 }
@@ -221,18 +270,227 @@ function paintMessages(toBottom) {
   if (!box || !I.room?.messages) return;
   box.innerHTML = `${I.room.end ? `<button class="older" data-act="older-msgs">${icon('chevron-up')}${esc(t('Load earlier messages'))}</button>` : ''}${messagesHtml(I.room.messages)}${I.room.messages.length ? '' : emptyState('message-square', t('No messages yet'))}`;
   if (toBottom) requestAnimationFrame(() => { const main = $('#main'); main.scrollTop = main.scrollHeight; });
+  hydrateImages();
+}
+
+// ---------------------------------------------------------------- media in chats
+const mediaCache = {};
+const playing = { id: null, on: false, audio: null };
+const fmtDur = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
+const bars = (id) => Array.from({ length: 22 }, (_, i) => `<i style="height:${30 + ((hash(`${id}${i}`) % 70))}%"></i>`).join('');
+
+async function hydrateImages() {
+  const c = client();
+  for (const el of document.querySelectorAll('.m-img[data-mxc^="mxc://"]')) {
+    const mxc = el.dataset.mxc;
+    if (el.querySelector('img')) continue;
+    try {
+      mediaCache[mxc] ||= await c.mediaData(mxc, 'thumbnail');
+      el.innerHTML = `<img src="${mediaCache[mxc]}" alt="">`;
+    } catch { el.innerHTML = `<span class="m-load">${icon('image')}${esc(t('Photo'))}</span>`; }
+  }
+}
+
+export async function viewImage(mxc) {
+  if (!mxc) return;
+  const c = client();
+  let src = /^data:/.test(mxc) ? mxc : mediaCache[mxc];
+  openSheet(() => `<div class="img-view">${src ? `<img src="${src}" alt="">` : skeleton(1)}</div>
+    ${/^mxc:/.test(mxc) ? `<div class="mail-actions"><button class="btn small ghost" data-act="msg-file" data-mxc="${esc(mxc)}" data-name="photo.jpg">${icon('download')}${esc(t('Save'))}</button></div>` : ''}`, { full: true });
+  if (/^mxc:/.test(mxc)) {
+    try { src = await c.mediaData(mxc, 'download'); const box = $('.img-view'); if (box) box.innerHTML = `<img src="${src}" alt="">`; } catch { /* keep thumbnail */ }
+  }
+}
+
+export async function playVoice(mxc, id) {
+  if (playing.id === id && playing.audio) {
+    if (playing.on) { playing.audio.pause(); playing.on = false; } else { playing.audio.play(); playing.on = true; }
+    paintMessages(false);
+    return;
+  }
+  playing.audio?.pause();
+  Object.assign(playing, { id, on: true, audio: null });
+  paintMessages(false);
+  try {
+    const src = mediaCache[`a:${mxc}`] ||= await client().mediaData(mxc, 'download');
+    const a = new Audio(src);
+    playing.audio = a;
+    a.ontimeupdate = () => {
+      const el = document.querySelector(`.m-voice[data-id="${CSS.escape(id)}"]`);
+      if (el) { el.style.setProperty('--p', `${(a.currentTime / (a.duration || 1)) * 100}%`); el.querySelector('.vp-t').textContent = fmtDur((a.duration - a.currentTime) * 1000); }
+    };
+    a.onended = () => { playing.on = false; paintMessages(false); };
+    await a.play();
+  } catch (e) { playing.on = false; paintMessages(false); toast(t('Could not play this voice message'), 'err'); }
+}
+
+export function downloadChatFile(mxc, name) {
+  client().downloadMedia(mxc, name).then(() => toast(t('Downloading {name}', { name })), (e) => toast(e.message, 'err'));
 }
 
 export function viewRoom() {
   if (!I.room) return emptyState('message-square', t('No chat selected'));
   setTimeout(() => paintMessages(true), 0);
-  return `<div class="chat">
+  const enc = I.room.encrypted;
+  return `<div class="chat-wrap"><div class="chat">
+    ${enc ? `<div class="ai-context">${icon('lock')}<span>${esc(t('This chat is end-to-end encrypted. Lessn can only show and send unencrypted messages; open it on the IServ website to read everything.'))}</span></div>` : ''}
     <div id="msgs" class="msgs">${I.error.room ? errBox('room') : skeleton(4)}</div>
   </div>
-  <form class="composer" id="composer">
-    <textarea id="msg-input" rows="1" placeholder="${esc(t('Message'))}" enterkeyhint="send"></textarea>
-    <button class="send" aria-label="${esc(t('Send'))}">${icon('send')}</button>
-  </form>`;
+  <div class="composer-dock">
+    <div id="voice-bar" class="voice-bar" hidden><span class="rec-dot"></span><b id="voice-time">0:00</b><span class="vb-hint">${esc(t('Recording voice message'))}</span>
+      <button type="button" class="icon-btn" data-act="voice-cancel" aria-label="${esc(t('Delete'))}">${icon('trash-2')}</button>
+      <button type="button" class="send" data-act="voice-send" aria-label="${esc(t('Send'))}">${icon('send')}</button></div>
+    <form class="composer gem" id="composer">
+      <button type="button" class="attach" data-act="chat-attach" aria-label="${esc(t('Attach'))}">${icon('plus')}</button>
+      <textarea id="msg-input" rows="1" placeholder="${esc(t('Message'))}" enterkeyhint="send"></textarea>
+      <button type="button" class="send mic" data-act="voice-start" aria-label="${esc(t('Voice message'))}">${icon('mic')}</button>
+      <button class="send txt-send" aria-label="${esc(t('Send'))}">${icon('send')}</button>
+    </form>
+    <input type="file" id="chat-photo" accept="image/*" multiple hidden>
+    <input type="file" id="chat-camera" accept="image/*" capture="environment" hidden>
+    <input type="file" id="chat-file" hidden>
+  </div></div>`;
+}
+
+export function openAttachMenu() {
+  openSheet(() => `<h2 class="sheet-title">${icon('paperclip')}${esc(t('Send'))}</h2>
+    <div class="attach-grid">
+      <button data-act="pick" data-input="chat-photo"><span style="--c:#8e4ec6">${icon('image')}</span>${esc(t('Photos'))}</button>
+      <button data-act="pick" data-input="chat-camera"><span style="--c:#e5484d">${icon('camera')}</span>${esc(t('Camera'))}</button>
+      <button data-act="pick" data-input="chat-file"><span style="--c:#0090ff">${icon('file')}</span>${esc(t('File'))}</button>
+    </div>`);
+}
+
+const readFile = (f) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = reject; r.readAsDataURL(f); });
+const imageSize = (src) => new Promise((resolve) => { const i = new Image(); i.onload = () => resolve({ w: i.naturalWidth, h: i.naturalHeight }); i.onerror = () => resolve({}); i.src = src; });
+async function shrinkImage(file) {
+  const src = await readFile(file);
+  const { w, h } = await imageSize(src);
+  if (!w || Math.max(w, h) <= 2048) return { src, w, h, mime: file.type || 'image/jpeg' };
+  const k = 2048 / Math.max(w, h);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+  const img = new Image(); img.src = src; await new Promise((r) => { img.onload = r; });
+  cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+  return { src: cv.toDataURL('image/jpeg', 0.88), w: cv.width, h: cv.height, mime: 'image/jpeg' };
+}
+
+export async function sendFiles(files, asImage) {
+  closeSheet(true);
+  const c = client();
+  for (const f of [...files].slice(0, 10)) {
+    if (f.size > 50e6) { toast(t('{name} is too big (max 50 MB)', { name: f.name }), 'err'); continue; }
+    const isImg = asImage || /^image\//.test(f.type);
+    const tmp = { id: `tmp${Date.now()}${Math.random()}`, mine: true, ts: Date.now(), pending: true, kind: isImg ? 'm.image' : 'm.file', filename: f.name, info: { size: f.size, mimetype: f.type }, body: f.name };
+    try {
+      let data; let w; let h; let mime = f.type || 'application/octet-stream';
+      if (isImg) { const r = await shrinkImage(f); data = r.src; w = r.w; h = r.h; mime = r.mime; tmp.localSrc = data; tmp.info = { ...tmp.info, w, h }; }
+      else data = await readFile(f);
+      I.room.messages = [...I.room.messages, tmp];
+      paintMessages(true);
+      const base64 = data.split(',')[1];
+      const size = Math.round(base64.length * 0.75);
+      const r = isImg ? await c.sendImage(I.room.id, { base64, mime, name: f.name || 'photo.jpg', w, h, size })
+        : await c.sendFile(I.room.id, { base64, mime, name: f.name, size });
+      tmp.id = r.event_id || tmp.id; tmp.pending = false;
+      paintMessages(false);
+    } catch (e) {
+      I.room.messages = I.room.messages.filter((m) => m !== tmp);
+      paintMessages(false);
+      toast(t(e.message), 'err');
+    }
+  }
+}
+
+// voice messages
+let voiceTimer = null;
+export async function voiceStart() {
+  try {
+    const st = await native.request(['microphone']);
+    if (st.microphone !== 'granted') { toast(t('Microphone permission is needed'), 'err'); return; }
+    await native.voiceStart();
+    const t0 = Date.now();
+    $('#voice-bar').hidden = false;
+    $('#composer').hidden = true;
+    clearInterval(voiceTimer);
+    voiceTimer = setInterval(() => { const el = $('#voice-time'); if (el) el.textContent = fmtDur(Date.now() - t0); }, 250);
+  } catch (e) { toast(t(e.message === 'permission' ? 'Microphone permission is needed' : e.message), 'err'); }
+}
+export async function voiceStop(send) {
+  clearInterval(voiceTimer);
+  const bar = $('#voice-bar'); if (bar) bar.hidden = true;
+  const comp = $('#composer'); if (comp) comp.hidden = false;
+  let r;
+  try { r = await native.voiceStop(!send); } catch { return; }
+  if (!send || r.cancelled || !r.path) return;
+  const tmp = { id: `tmp${Date.now()}`, mine: true, ts: Date.now(), pending: true, kind: 'm.audio', mxc: '', info: { duration: r.duration }, body: '' };
+  I.room.messages = [...I.room.messages, tmp];
+  paintMessages(true);
+  try {
+    const res = await client().sendVoice(I.room.id, { path: r.path, duration: r.duration, size: r.size });
+    tmp.id = res.event_id || tmp.id; tmp.pending = false;
+    paintMessages(false);
+  } catch (e) {
+    I.room.messages = I.room.messages.filter((m) => m !== tmp);
+    paintMessages(false);
+    toast(t(e.message), 'err');
+  }
+}
+
+// message menu: copy / delete
+export function messageMenu(id) {
+  const m = I.room?.messages?.find((x) => x.id === id);
+  if (!m || m.pending || m.redacted) return;
+  openSheet(() => `<div class="card">
+    ${m.body && m.kind === 'm.text' ? `<button class="row" data-act="msg-copy" data-id="${esc(id)}"><span class="row-ic">${icon('copy')}</span><span class="row-text"><b>${esc(t('Copy'))}</b></span></button>` : ''}
+    ${m.mxc ? `<button class="row" data-act="msg-file" data-mxc="${esc(m.mxc)}" data-name="${esc(m.filename || 'file')}"><span class="row-ic">${icon('download')}</span><span class="row-text"><b>${esc(t('Save'))}</b></span></button>` : ''}
+    ${m.mine ? `<button class="row danger" data-act="msg-delete" data-id="${esc(id)}"><span class="row-ic">${icon('trash-2')}</span><span class="row-text"><b>${esc(t('Delete for everyone'))}</b></span></button>` : ''}
+  </div>`);
+}
+export function copyMessage(id) {
+  const m = I.room?.messages?.find((x) => x.id === id);
+  closeSheet();
+  if (m) navigator.clipboard?.writeText(m.body).then(() => toast(t('Copied to clipboard')), () => {});
+}
+export async function deleteMessage(id) {
+  closeSheet();
+  try {
+    await client().redact(I.room.id, id);
+    const m = I.room.messages.find((x) => x.id === id);
+    if (m) m.redacted = true;
+    paintMessages(false);
+  } catch (e) { toast(t(e.message), 'err'); }
+}
+
+// new chat
+export function openNewChat() {
+  let results = [];
+  let q = '';
+  let busy = false;
+  const build = () => `<h2 class="sheet-title">${icon('square-pen')}${esc(t('New chat'))}</h2>
+    <label class="search">${icon('search')}<input id="user-q" placeholder="${esc(t('Search people'))}" value="${esc(q)}" autocomplete="off"></label>
+    <div id="user-results">${busy ? skeleton(3) : results.length ? `<div class="card">${results.map((u) => `<button class="chat-row" data-act="start-dm" data-id="${esc(u.id)}">${avatar(u.name)}<span class="chat-row-text"><b>${esc(u.name)}</b><span class="chat-row-bottom"><span>${esc(u.id.replace(/^@/, '').split(':')[0])}</span></span></span></button>`).join('')}</div>` : q.length >= 2 ? emptyState('search', t('No matches')) : ''}</div>`;
+  openSheet(build, { full: true });
+  let timer;
+  openNewChat.search = (v) => {
+    q = v; clearTimeout(timer);
+    if (q.length < 2) { results = []; $('#user-results').innerHTML = ''; return; }
+    timer = setTimeout(async () => {
+      busy = true; $('#user-results').innerHTML = skeleton(3);
+      try { results = await client().searchUsers(q); } catch (e) { results = []; toast(t(e.message), 'err'); }
+      busy = false;
+      const tmp = document.createElement('div'); tmp.innerHTML = build();
+      $('#user-results').innerHTML = $('#user-results', tmp).innerHTML;
+    }, 350);
+  };
+}
+export async function startDirect(userId) {
+  closeSheet(true);
+  try {
+    const roomId = await client().createDirect(userId);
+    await loadRooms();
+    openRoom(roomId);
+  } catch (e) { toast(t(e.message), 'err'); }
 }
 
 export async function sendMessage() {
@@ -244,7 +502,6 @@ export async function sendMessage() {
   I.room.messages = [...(I.room.messages || []), tmp];
   input.value = '';
   input.style.height = '';
-  haptic();
   paintMessages(true);
   try {
     const r = await c.send(I.room.id, text);
@@ -395,12 +652,68 @@ export function viewFiles() {
   const crumbs = [`<button data-act="files-go" data-p="/">${icon('house')}</button>`, ...parts.map((p, i) => `<button data-act="files-go" data-p="/${parts.slice(0, i + 1).join('/')}/">${esc(p)}</button>`)].join(icon('chevron-right', 'crumb-sep'));
   const list = I.files.slice().sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
   return `<div class="crumbs">${crumbs}</div><div class="pad">
-    ${list.length ? `<div class="card">${list.map((f, i) => `<button class="file-row" data-act="${f.isDir ? 'files-go' : 'file-dl'}" data-p="${esc(f.path.endsWith('/') || !f.isDir ? f.path : `${f.path}/`)}" data-i="${i}">
-      <span class="file-ic ${f.isDir ? 'dir' : ''}">${icon(fileIcon(f))}</span>
-      <span class="row-text"><b>${esc(f.name)}</b><small>${[f.isDir ? '' : sizeText(f.size), f.modified ? when(f.modified) : ''].filter(Boolean).join(' · ')}</small></span>
-      ${icon(f.isDir ? 'chevron-right' : 'download', 'row-chev')}
-    </button>`).join('')}</div>` : emptyState('folder', t('This folder is empty'))}
+    <div class="file-tools">
+      <button class="btn small ghost" data-act="file-upload">${icon('upload')}${esc(t('Upload'))}</button>
+      <button class="btn small ghost" data-act="file-mkdir">${icon('folder-plus')}${esc(t('New folder'))}</button>
+      <input type="file" id="file-up" multiple hidden>
+    </div>
+    ${list.length ? `<div class="card">${list.map((f) => `<div class="file-row">
+      <button class="file-main" data-act="${f.isDir ? 'files-go' : 'file-open'}" data-p="${esc(f.isDir && !f.path.endsWith('/') ? `${f.path}/` : f.path)}">
+        <span class="file-ic ${f.isDir ? 'dir' : ''}">${icon(fileIcon(f))}</span>
+        <span class="row-text"><b>${esc(f.name)}</b><small>${[f.isDir ? '' : sizeText(f.size), f.modified ? when(f.modified) : ''].filter(Boolean).join(' · ')}</small></span>
+      </button>
+      <button class="icon-btn" data-act="file-menu" data-p="${esc(f.path)}" aria-label="${esc(t('More'))}">${icon('ellipsis-vertical')}</button>
+    </div>`).join('')}</div>` : emptyState('folder', t('This folder is empty'))}
   </div>`;
+}
+
+const isImageFile = (f) => /\.(png|jpe?g|gif|webp|bmp|heic)$/i.test(f.name) || /^image\//.test(f.type || '');
+export async function openFile(path) {
+  const f = I.files?.find((x) => x.path === path);
+  if (!f) return;
+  if (!isImageFile(f)) { downloadFile(path); return; }
+  openSheet(() => `<div class="img-view">${skeleton(1)}</div><div class="mail-actions"><button class="btn small ghost" data-act="file-dl" data-p="${esc(path)}">${icon('download')}${esc(t('Save'))}</button></div>`, { full: true });
+  try { const src = await client().fileData(path); const box = $('.img-view'); if (box) box.innerHTML = `<img src="${src}" alt="">`; } catch (e) { toast(t(e.message), 'err'); }
+}
+
+export function fileMenu(path) {
+  const f = I.files?.find((x) => x.path === path);
+  if (!f) return;
+  openSheet(() => `<h2 class="sheet-title">${icon(fileIcon(f))}${esc(f.name)}</h2><div class="card">
+    ${f.isDir ? '' : `<button class="row" data-act="file-dl" data-p="${esc(path)}"><span class="row-ic">${icon('download')}</span><span class="row-text"><b>${esc(t('Download'))}</b></span></button>`}
+    <button class="row" data-act="file-rename" data-p="${esc(path)}"><span class="row-ic">${icon('pencil')}</span><span class="row-text"><b>${esc(t('Rename'))}</b></span></button>
+    <button class="row danger" data-act="file-delete" data-p="${esc(path)}"><span class="row-ic">${icon('trash-2')}</span><span class="row-text"><b>${esc(t('Delete'))}</b></span></button>
+  </div>`);
+}
+
+const reloadFiles = () => loadFiles(I.path);
+export async function fileRename(path) {
+  const f = I.files?.find((x) => x.path === path);
+  closeSheet(true);
+  const name = prompt(t('New name'), f?.name || '');
+  if (!name || name === f?.name || /[\\/]/.test(name)) return;
+  const parent = path.replace(/\/$/, '').split('/').slice(0, -1).join('/');
+  try { await client().move(path, `${parent}/${name}${f?.isDir ? '/' : ''}`); reloadFiles(); } catch (e) { toast(t(e.message), 'err'); }
+}
+export async function fileDelete(path) {
+  const f = I.files?.find((x) => x.path === path);
+  closeSheet(true);
+  if (!confirm(t('Delete {name}?', { name: f?.name || path }))) return;
+  try { await client().remove(path); reloadFiles(); toast(t('Deleted')); } catch (e) { toast(t(e.message), 'err'); }
+}
+export async function fileMkdir() {
+  const name = prompt(t('Folder name'));
+  if (!name || /[\\/]/.test(name)) return;
+  try { await client().mkdir(`${I.path.replace(/\/?$/, '/')}${name}/`); reloadFiles(); } catch (e) { toast(t(e.message), 'err'); }
+}
+export async function fileUpload(files) {
+  for (const f of [...files].slice(0, 20)) {
+    if (f.size > 25e6) { toast(t('{name} is too big (max 25 MB)', { name: f.name }), 'err'); continue; }
+    toast(t('Uploading {name}', { name: f.name }));
+    try { const data = await readFile(f); await client().uploadFile(I.path, { name: f.name, base64: data.split(',')[1], mime: f.type }); }
+    catch (e) { toast(t(e.message), 'err'); }
+  }
+  reloadFiles();
 }
 
 export function downloadFile(path) {

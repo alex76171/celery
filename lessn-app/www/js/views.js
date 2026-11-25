@@ -2,7 +2,7 @@
 import {
   S, t, esc, icon, fmt, fmtTime, durText, relDay, inDays, sameDay, addDays, mondayOf, daysBetween, nowMin, weekNumber,
   toUntisDate, fromUntisDate, subjKey, subjName, subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge,
-  stagger, openSheet, haptic, seg,
+  stagger, openSheet, seg,
 } from './core.js';
 import { allHomework, hwDoneAny, homeExtras, examId } from './assist.js';
 import {
@@ -420,7 +420,6 @@ export function viewExams() {
 export function openLesson(id) {
   const l = S.index[id];
   if (!l) return;
-  haptic();
   const color = colorFor(subjKey(l));
   const d = fromUntisDate(l.date);
   const ch = changes(l);

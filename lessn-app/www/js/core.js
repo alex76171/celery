@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.3.0';
+export const VERSION = '2.4.0';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -118,9 +118,6 @@ export function colorFor(key) {
 export const personText = (list) => list.map((x) => (S.settings.teacherLongNames ? x.long : x.name)).filter(Boolean).join(', ');
 
 // ---------------------------------------------------------------- feedback
-export function haptic(style = 'LIGHT') {
-  if (S.settings.haptics) safe(plugin('Haptics')?.impact({ style }));
-}
 let toastTimer;
 export function toast(msg, kind = '') {
   const el = $('#toast');
@@ -312,7 +309,7 @@ export function bindLongPress(el, fn) {
   let x0 = 0;
   let y0 = 0;
   const cancel = () => clearTimeout(timer);
-  el.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; timer = setTimeout(() => { haptic('MEDIUM'); fn(); }, 650); });
+  el.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; timer = setTimeout(() => { fn(); }, 650); });
   el.addEventListener('pointermove', (e) => { if (Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) > 10) cancel(); });
   ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => el.addEventListener(ev, cancel));
   el.addEventListener('contextmenu', (e) => e.preventDefault());

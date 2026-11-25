@@ -21,6 +21,36 @@ final class Dav {
         String body;
     }
 
+    /** Any WebDAV method (MKCOL, MOVE, DELETE, PUT, ...) with optional body and extra headers. */
+    static Result request(String host, String method, String path, String user, String pass, java.util.Map<String, String> extra, byte[] body) throws Exception {
+        String auth = Base64.encodeToString((user + ":" + pass).getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        if (body == null) body = new byte[0];
+        SSLSocketFactory f = HttpsURLConnection.getDefaultSSLSocketFactory();
+        try (SSLSocket s = (SSLSocket) f.createSocket(host, 443)) {
+            s.setSoTimeout(60000);
+            s.startHandshake();
+            if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(host, s.getSession())) throw new SecurityException("Certificate does not match " + host);
+            StringBuilder req = new StringBuilder();
+            req.append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
+                .append("Host: ").append(host).append("\r\n")
+                .append("Authorization: Basic ").append(auth).append("\r\n")
+                .append("Content-Length: ").append(body.length).append("\r\n")
+                .append("User-Agent: Lessn\r\nConnection: close\r\n");
+            if (extra != null) for (java.util.Map.Entry<String, String> e : extra.entrySet()) req.append(e.getKey()).append(": ").append(e.getValue()).append("\r\n");
+            req.append("\r\n");
+            OutputStream out = s.getOutputStream();
+            out.write(req.toString().getBytes(StandardCharsets.UTF_8));
+            out.write(body);
+            out.flush();
+            InputStream in = s.getInputStream();
+            ByteArrayOutputStream raw = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) { raw.write(buf, 0, n); if (raw.size() > 20_000_000) break; }
+            return parse(raw.toByteArray());
+        }
+    }
+
     static Result propfind(String host, String path, String user, String pass) throws Exception {
         String auth = Base64.encodeToString((user + ":" + pass).getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         String xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:propfind xmlns:d=\"DAV:\"><d:prop>"

@@ -4,7 +4,7 @@ Lessn is an unofficial Android app for WebUntis. It shows your timetable, homewo
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-2.3.0.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-2.4.0.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
@@ -27,7 +27,12 @@ If the search can't find your school, tap **Enter the server manually** and type
 - **AI helper**: a Gemini-style start screen with a greeting, suggestions for your homework, exams and last lesson, recent chats, and the message bar at the bottom. Free chats with photo upload, a tutor-style helper (hints first, full solutions if you ask) and quick-start questions.
 - **Exams**: tap an exam for **Study with AI** (explanations and quiz questions) and **Make a study plan**. The plan is built from your lesson summaries and spread over the days before the exam, with a checkbox for each task. Today's tasks show on Home.
 - **Lesson recorder (beta)**: records a lesson and turns it into a summary that feeds the homework help and study plans. **Only record with your teacher's and class's permission (§201 StGB).**
-- **IServ**: messenger, mail, files, calendar and notifications in the app's design. **IServ notifications** check for new IServ notifications and chat messages every 15 minutes, even when the app is closed.
+- **IServ**, built into the app in your theme:
+  - **Messenger**: chats with photos (shown in the chat, tap to view full size), files, **voice messages** (record with the mic button, play inline), sending photos from the gallery or camera, files, starting new chats (search people), and long-press a message to copy, save or delete it. End-to-end encrypted chats can only be read on the IServ website.
+  - **Files**: browse, preview photos, download, **upload**, new folder, rename and delete.
+  - **Tasks**: current IServ tasks with description and attachments, "Get help from AI", and hand-in through IServ.
+  - **E-Mail**, **Calendar**, **Notifications**, plus links to forums, video conferences, news, polls, plans, room booking, address book and your profile (these open in the in-app IServ browser).
+  - **IServ notifications** for new messages and notifications, checked every 15 minutes.
 - **Week** as a list (default) or as a grid,, **Grades**, **Attendance** (with the optional "Are you at school?" location check), lesson reminders, Do Not Disturb during lessons, offline cache, and 9 languages (English, Deutsch, Türkçe, Français, Español, Polski, Українська, Русский, العربية, including right-to-left layout).
 
 ## Hidden customization

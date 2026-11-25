@@ -320,7 +320,7 @@ export class IServ {
       }
       const last = (r.timeline?.events || []).filter((e) => e.type === 'm.room.message' || e.type === 'm.room.encrypted').pop();
       return {
-        id, name, direct: direct.has(id),
+        id, name, direct: direct.has(id), encrypted: state.some((e) => e.type === 'm.room.encryption'),
         unread: r.unread_notifications?.notification_count || 0,
         members: r.summary?.['m.joined_member_count'] || 0,
         last: last ? { body: last.type === 'm.room.encrypted' ? null : messageText(last), sender: names[last.sender] || shortId(last.sender), mine: last.sender === me, ts: last.origin_server_ts } : null,
@@ -361,6 +361,134 @@ export class IServ {
     return this.mxFetch(`/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`, { method: 'PUT', body: JSON.stringify({ msgtype: 'm.text', body }) });
   }
 
+  // ---------------------------------------------------------------- messenger media
+  async mediaV1() {
+    if (this.hasV1 !== undefined) return this.hasV1;
+    try {
+      const m = await this.matrixLogin();
+      const r = await native.raw({ url: `${this.base}/_matrix/client/v1/media/config`, headers: { Authorization: `Bearer ${m.token}` } });
+      this.hasV1 = r.status === 200;
+    } catch { this.hasV1 = false; }
+    return this.hasV1;
+  }
+
+  async mediaUrl(mxc, kind = 'download', name = '') {
+    const [server, id] = String(mxc).replace(/^mxc:\/\//, '').split('/');
+    const v1 = await this.mediaV1();
+    const base = v1 ? `${this.base}/_matrix/client/v1/media` : `${this.base}/_matrix/media/v3`;
+    if (kind === 'thumbnail') return `${base}/thumbnail/${server}/${id}?width=720&height=720&method=scale`;
+    return `${base}/download/${server}/${id}${name ? `/${encodeURIComponent(name)}` : ''}`;
+  }
+
+  /** Media as a data: URL (images, voice messages). */
+  async mediaData(mxc, kind = 'thumbnail') {
+    const m = await this.matrixLogin();
+    const r = await native.raw({ url: await this.mediaUrl(mxc, kind), headers: { Authorization: `Bearer ${m.token}` }, base64: true });
+    if (r.status >= 400) throw err(`Media error ${r.status}`, r.status);
+    return `data:${(r.contentType || 'application/octet-stream').split(';')[0]};base64,${r.data}`;
+  }
+
+  async downloadMedia(mxc, name) {
+    const m = await this.matrixLogin();
+    return native.download({ url: await this.mediaUrl(mxc, 'download', name), filename: name || 'file', headers: { Authorization: `Bearer ${m.token}` } });
+  }
+
+  async upload({ base64, path, mime, name }) {
+    const m = await this.matrixLogin();
+    const r = await native.raw({
+      url: `${this.base}/_matrix/media/v3/upload?filename=${encodeURIComponent(name)}`, method: 'POST',
+      headers: { Authorization: `Bearer ${m.token}`, 'Content-Type': mime || 'application/octet-stream' },
+      ...(path ? { bodyPath: path } : { bodyBase64: base64 }),
+    });
+    let j = {};
+    try { j = JSON.parse(r.data); } catch { /* handled below */ }
+    if (r.status >= 400 || !j.content_uri) throw err(j.error || `Upload failed (${r.status})`, r.status);
+    return j.content_uri;
+  }
+
+  async sendContent(roomId, content) {
+    const txn = `lessn${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    return this.mxFetch(`/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`, { method: 'PUT', body: JSON.stringify(content) });
+  }
+
+  async sendImage(roomId, { base64, mime, name, w, h, size }) {
+    const url = await this.upload({ base64, mime, name });
+    return this.sendContent(roomId, { msgtype: 'm.image', body: name, url, info: { mimetype: mime, size, w, h } });
+  }
+
+  async sendFile(roomId, { base64, mime, name, size }) {
+    const url = await this.upload({ base64, mime, name });
+    return this.sendContent(roomId, { msgtype: 'm.file', body: name, filename: name, url, info: { mimetype: mime, size } });
+  }
+
+  async sendVoice(roomId, { path, duration, size }) {
+    const url = await this.upload({ path, mime: 'audio/mp4', name: 'voice-message.m4a' });
+    return this.sendContent(roomId, {
+      msgtype: 'm.audio', body: 'Voice message', url, info: { mimetype: 'audio/mp4', size, duration },
+      'org.matrix.msc1767.audio': { duration }, 'org.matrix.msc3245.voice': {},
+    });
+  }
+
+  redact(roomId, eventId) {
+    const txn = `lessn${Date.now()}`;
+    return this.mxFetch(`/rooms/${encodeURIComponent(roomId)}/redact/${encodeURIComponent(eventId)}/${txn}`, { method: 'PUT', body: '{}' });
+  }
+
+  async searchUsers(term) {
+    const j = await this.mxFetch('/user_directory/search', { method: 'POST', body: JSON.stringify({ search_term: term, limit: 20 }) });
+    return (j.results || []).filter((u) => u.user_id !== this.matrix.userId).map((u) => ({ id: u.user_id, name: u.display_name || shortId(u.user_id) }));
+  }
+
+  async createDirect(userId) {
+    const j = await this.mxFetch('/createRoom', { method: 'POST', body: JSON.stringify({ is_direct: true, invite: [userId], preset: 'trusted_private_chat' }) });
+    try {
+      const me = encodeURIComponent(this.matrix.userId);
+      const cur = await this.mxFetch(`/user/${me}/account_data/m.direct`).catch(() => ({}));
+      cur[userId] = [...(cur[userId] || []), j.room_id];
+      await this.mxFetch(`/user/${me}/account_data/m.direct`, { method: 'PUT', body: JSON.stringify(cur) });
+    } catch { /* not important */ }
+    return j.room_id;
+  }
+
+  // ---------------------------------------------------------------- files: write operations (WebDAV)
+  get davAuth() { return `Basic ${btoa(unescape(encodeURIComponent(`${this.username}:${this.password}`)))}`; }
+  davUrl(path) { return `https://webdav.${this.host}${encodeURI(path)}`; }
+
+  async fileData(path) {
+    const r = await native.raw({ url: this.davUrl(path), headers: { Authorization: this.davAuth }, base64: true });
+    if (r.status >= 400) throw err(`IServ files: HTTP ${r.status}`, r.status);
+    return `data:${(r.contentType || 'application/octet-stream').split(';')[0]};base64,${r.data}`;
+  }
+
+  async uploadFile(folder, { name, base64, mime }) {
+    const r = await native.raw({ url: this.davUrl(folder.replace(/\/?$/, '/') + name), method: 'PUT', headers: { Authorization: this.davAuth, 'Content-Type': mime || 'application/octet-stream' }, bodyBase64: base64 });
+    if (r.status >= 400) throw err(`Upload failed (HTTP ${r.status})`, r.status);
+  }
+
+  async davOp(method, path, headers = {}) {
+    const r = await native.davRequest({ host: `webdav.${this.host}`, method, path: encodeURI(path), username: this.username, password: this.password, headers });
+    if (r.status >= 400) throw err(`IServ files: HTTP ${r.status}`, r.status);
+    return r;
+  }
+  mkdir(path) { return this.davOp('MKCOL', path); }
+  remove(path) { return this.davOp('DELETE', path); }
+  move(from, to) { return this.davOp('MOVE', from, { Destination: this.davUrl(to), Overwrite: 'F' }); }
+
+  // ---------------------------------------------------------------- task details (web page)
+  async exerciseDetails(url) {
+    if (!this.loggedIn) await this.login();
+    const res = await this.http(url.startsWith('http') ? url : url);
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const pick = (sel) => [...doc.querySelectorAll(sel)].map((x) => x.textContent.replace(/\s+\n/g, '\n').trim()).filter(Boolean);
+    const text = pick('.text-break-word, .exercise-text, .panel-body .text, .card-body .text').join('\n\n')
+      || (doc.querySelector('main, #content, .content')?.innerText || '').trim().slice(0, 4000);
+    const files = [...doc.querySelectorAll('a[href*="/file/"], a[href*="download"], a[href*="attachment"]')]
+      .map((a) => ({ name: a.textContent.trim() || 'file', href: a.getAttribute('href') })).filter((f) => f.name.length < 140);
+    const teacher = (pick('.bt0.pt-0.pl-0, [class*="author"]')[0] || '');
+    return { text, files, teacher };
+  }
+
   markRoomRead(roomId, eventId) {
     if (!eventId) return Promise.resolve();
     return this.mxFetch(`/rooms/${encodeURIComponent(roomId)}/receipt/m.read/${encodeURIComponent(eventId)}`, { method: 'POST', body: '{}' }).catch(() => {});
@@ -392,5 +520,7 @@ function toMsg(e, names, me) {
     id: e.event_id, sender: e.sender, name: names[e.sender] || shortId(e.sender), mine: e.sender === me,
     ts: e.origin_server_ts, encrypted: enc, kind: enc ? 'encrypted' : (e.content?.msgtype || 'm.text'),
     body: enc ? '' : messageText(e), file: e.content?.msgtype === 'm.file' ? e.content.body : '',
+    mxc: e.content?.url || '', info: e.content?.info || {}, filename: e.content?.filename || e.content?.body || '',
+    redacted: !!e.unsigned?.redacted_because || (e.type === 'm.room.message' && !e.content?.msgtype),
   };
 }

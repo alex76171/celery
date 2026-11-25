@@ -2,7 +2,7 @@
 // and the extra "day plan" sections on Home.
 import {
   S, t, $, esc, icon, fmt, relDay, inDays, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, rerenderSheet,
-  toast, haptic, colorFor, subjLabel, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
+  toast, colorFor, subjLabel, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
 } from './core.js';
 import { chat as aiChat, studyPlan as aiPlan, DEFAULT_MODEL, LANG_NAME } from './ai.js';
 import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
@@ -84,7 +84,6 @@ export function toggleHomework(key) {
   if (!h) return;
   const v = !hwDoneAny(h);
   store.setHomeworkDone(key, v);
-  haptic(v ? 'MEDIUM' : 'LIGHT');
   return v;
 }
 export function deleteHomework(key) {
@@ -291,7 +290,6 @@ export async function sendAI(textOverride) {
   if (input) { input.value = ''; input.style.height = ''; }
   S.aiThinking = c.id;
   repaint(c);
-  haptic();
   try {
     const answer = await aiChat({ apiKey: store.aiKey(), model: S.settings.aiModel || DEFAULT_MODEL, messages: msgs, system: systemPrompt(c.context) });
     msgs.push({ role: 'model', text: answer });
@@ -380,7 +378,6 @@ export function togglePlanTask(k) {
   const m = read('plandone', {});
   m[k] = !m[k];
   write('plandone', m);
-  haptic(m[k] ? 'MEDIUM' : 'LIGHT');
   rerenderSheet();
   render();
 }
@@ -453,7 +450,6 @@ export function editTabs(action, k, dir) {
   if (action === 'move') { const i = tabs.indexOf(k); const j = i + dir; if (j >= 0 && j < tabs.length) [tabs[i], tabs[j]] = [tabs[j], tabs[i]]; }
   S.settings.tabs = tabs;
   store.saveSettings(S.settings);
-  haptic();
   rerenderSheet();
   return tabs;
 }

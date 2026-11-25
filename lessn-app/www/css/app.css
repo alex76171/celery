@@ -1219,3 +1219,49 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .hello-lang-dd { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 99px; background: var(--surface); box-shadow: var(--shadow); font-weight: 650; }
 .hello-lang-dd .ic { width: 18px; height: 18px; color: var(--text3); }
 .hello-lang-dd select { position: absolute; inset: 0; opacity: 0; width: 100%; font-size: 16px; }
+
+/* ================================================================ IServ messenger media */
+.bubble.has-media { padding: 4px; }
+.bubble.has-media .who { padding: 4px 8px 2px; }
+.bubble.has-media small { padding: 0 8px 4px; }
+.m-img { display: block; width: min(260px, 62vw); max-height: 360px; border-radius: 14px; overflow: hidden; background: var(--surface2); position: relative; }
+.m-img img { display: block; width: 100%; height: 100%; object-fit: cover; animation: in-fade .3s; }
+.m-load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text3); font-size: .82rem; animation: pulse-op 1.4s infinite; }
+@keyframes pulse-op { 50% { opacity: .45; } }
+.m-voice { --p: 0%; display: flex; align-items: center; gap: 10px; width: min(250px, 64vw); padding: 8px 10px; }
+.vp-ic { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; flex: none; }
+.msg.me .vp-ic { background: #fff; color: var(--accent); }
+.vp-ic .ic { width: 18px; height: 18px; }
+.vp-bars { flex: 1; height: 26px; display: flex; align-items: center; gap: 2px; background: linear-gradient(90deg, currentColor var(--p), transparent var(--p)); -webkit-mask: linear-gradient(#000 0 0); }
+.vp-bars i { flex: 1; border-radius: 2px; background: currentColor; opacity: .45; }
+.vp-t { font-size: .75rem; font-variant-numeric: tabular-nums; opacity: .8; min-width: 32px; }
+.m-file { display: flex; align-items: center; gap: 10px; width: min(260px, 66vw); padding: 8px 10px; text-align: left; }
+.m-file span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.m-file b { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-file small { opacity: .7; padding: 0 !important; }
+.msg.me .m-file .file-ic { background: rgba(255,255,255,.2); color: #fff; }
+.msg.pending { opacity: .7; }
+.img-view { display: grid; place-items: center; min-height: 50vh; }
+.img-view img { max-width: 100%; max-height: 75vh; border-radius: 14px; animation: pop .35s var(--spring); }
+.attach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 4px 0 16px; }
+.attach-grid button { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: .85rem; font-weight: 600; }
+.attach-grid span { width: 60px; height: 60px; border-radius: 20px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); transition: transform .2s var(--spring); }
+.attach-grid button:active span { transform: scale(.9); }
+.attach-grid .ic { width: 26px; height: 26px; }
+.composer .attach { border: 0; cursor: pointer; }
+#composer:has(textarea:placeholder-shown) .txt-send { display: none; }
+#composer:not(:has(textarea:placeholder-shown)) .mic { display: none; }
+.composer .send.mic { background: var(--accent); color: #fff; }
+.voice-bar { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 30px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 4px 18px rgba(0,0,0,.08); animation: pop .3s var(--spring); }
+.voice-bar[hidden] { display: none !important; }
+.voice-bar b { font-variant-numeric: tabular-nums; color: var(--bad); }
+.vb-hint { flex: 1; color: var(--text3); font-size: .85rem; }
+.voice-bar .send { background: var(--accent); color: #fff; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); animation: pulse-op 1s infinite; }
+
+/* files */
+.file-tools { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.file-row { display: flex; align-items: center; gap: 4px; padding: 0 6px 0 0; }
+.file-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 11px 6px 11px 14px; text-align: left; }
+.file-main:active { background: var(--surface2); }
+.file-main .row-text b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

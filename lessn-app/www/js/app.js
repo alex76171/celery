@@ -1,7 +1,7 @@
 // App shell: navigation, rendering, gestures, events and startup.
 import {
   S, t, $, $$, esc, icon, fmt, relDay, weekNumber, sameDay, startOfDay, addDays, mondayOf, toUntisDate, fromUntisDate, pad,
-  store, applyTheme, syncBars, haptic, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
+  store, applyTheme, syncBars, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
 } from './core.js';
 import { Untis } from './api.js';
 import { native } from './native.js';
@@ -23,15 +23,15 @@ import * as A from './assist.js';
 const tabList = () => [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }];
 const TITLES = {
   grades: 'Grades', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
-  'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications',
+  'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications', 'is-tasks': 'Tasks',
   today: 'Home', week: 'Timetable', tasks: 'Homework', exams: 'Exams',
 };
-const PARENT = { 'is-chat': 'iserv', 'is-mail': 'iserv', 'is-files': 'iserv', 'is-cal': 'iserv', 'is-notes': 'iserv', 'is-room': 'is-chat', 'ai-chat': 'ai' };
+const PARENT = { 'is-chat': 'iserv', 'is-mail': 'iserv', 'is-files': 'iserv', 'is-cal': 'iserv', 'is-notes': 'iserv', 'is-tasks': 'iserv', 'is-room': 'is-chat', 'ai-chat': 'ai' };
 const isRoot = (v) => v === 'more' || A.userTabs().includes(v);
 const parentOf = (v) => PARENT[v] || 'more';
 const rootOf = (v) => { let x = v; for (let i = 0; i < 4 && !isRoot(x); i++) x = parentOf(x); return x; };
 const SUBVIEWS = new Proxy({}, { get: (_, v) => (typeof v === 'string' && !isRoot(v) ? TITLES[v] || v : undefined) });
-const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-room'];
+const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room'];
 
 // ---------------------------------------------------------------- shell
 const navHtml = () => `<nav class="tabs"><span class="tab-ind" id="tab-ind"></span>${tabList().map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>`;
@@ -113,7 +113,7 @@ export function render() {
   const views = {
     today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance,
     recorder: viewRecorder, iserv: IS.viewIServHub, 'is-chat': IS.viewChats, 'is-room': IS.viewRoom, 'is-mail': IS.viewMail,
-    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, ai: A.viewAI, 'ai-chat': A.viewAIChat,
+    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat,
   };
   if ((S.view === 'is-room' || S.view === 'ai-chat') && lastView === S.view && !S.anim) { updateHeader(); return; }
   content.innerHTML = views[S.view]();
@@ -130,7 +130,6 @@ export function setView(v, dir) {
   if (v === S.view) { $('#main').scrollTo({ top: 0, behavior: 'smooth' }); return; }
   S.anim = dir || (ORDER.indexOf(v) > ORDER.indexOf(S.view) ? 'left' : 'right');
   S.view = v;
-  haptic();
   render();
   if (v === 'tasks' && !S.homework) loadHomework();
   if (v === 'tasks') A.loadIServTasks();
@@ -200,9 +199,8 @@ function bindGestures(main) {
     const dy = tch.clientY - y0;
     ptr.style.transform = ''; ptr.style.opacity = '';
     content.style.transition = ''; content.style.transform = ''; content.style.opacity = '';
-    if (pulling && !horiz && dy * 0.5 > 60) { haptic(); refresh(); return; }
+    if (pulling && !horiz && dy * 0.5 > 60) { refresh(); return; }
     if (horiz && Math.abs(dx) > 70 && e.target.closest('.swipe-area, .strip')) {
-      haptic();
       if (S.view === 'today') shiftDay(dx < 0 ? 1 : -1);
       else if (S.view === 'week') shiftWeek(dx < 0 ? 1 : -1);
     }
@@ -215,7 +213,7 @@ function versionTap() {
   const now = Date.now();
   versionTaps = versionTaps.filter((x) => now - x < 3000);
   versionTaps.push(now);
-  if (versionTaps.length >= 7) { versionTaps = []; haptic('MEDIUM'); openCustomize(); }
+  if (versionTaps.length >= 7) { versionTaps = []; openCustomize(); }
 }
 
 function setSetting(key, value, { sheet = true } = {}) {
@@ -251,19 +249,19 @@ function onClick(e) {
     case 'tab': setView(d.view); break;
     case 'nav': closeSheet(true); if (d.view === 'is-room') break; setView(d.view, 'left'); break;
     case 'back': setView(parentOf(S.view), 'right'); break;
-    case 'day': haptic(); setDay(fromUntisDate(Number(d.d))); break;
+    case 'day': setDay(fromUntisDate(Number(d.d))); break;
     case 'goto-day': S.view = 'today'; setDay(fromUntisDate(Number(d.d)), 'fade'); break;
-    case 'week-prev': haptic(); shiftWeek(-1); break;
-    case 'week-next': haptic(); shiftWeek(1); break;
-    case 'today': haptic(); S.anim = 'fade'; S.day = startOfDay(new Date()); S.week = mondayOf(S.day); render(); loadWeek(S.week); break;
-    case 'refresh': haptic(); refresh(); break;
+    case 'week-prev': shiftWeek(-1); break;
+    case 'week-next': shiftWeek(1); break;
+    case 'today': S.anim = 'fade'; S.day = startOfDay(new Date()); S.week = mondayOf(S.day); render(); loadWeek(S.week); break;
+    case 'refresh': refresh(); break;
     case 'lesson': openLesson(Number(d.id)); break;
     case 'close-sheet': closeSheet(); break;
     case 'news': openNews(Number(d.i)); break;
     case 'hw-filter': S.hwFilter = d.f; S.anim = 'fade'; render(); break;
     case 'hw-toggle': {
       const h = S.homework.find((x) => String(x.id) === d.id);
-      if (h) { const v = !hwDone(h); store.setHomeworkDone(h.id, v); haptic(v ? 'MEDIUM' : 'LIGHT'); el.closest('.hw').classList.toggle('done', v); setTimeout(render, 450); }
+      if (h) { const v = !hwDone(h); store.setHomeworkDone(h.id, v); el.closest('.hw').classList.toggle('done', v); setTimeout(render, 450); }
       break;
     }
     case 'del-myexam': store.setMyExams(store.myExams().filter((x) => String(x.id) !== d.id)); render(); break;
@@ -289,8 +287,8 @@ function onClick(e) {
       }
       break;
     case 'version': versionTap(); break;
-    case 'set': setSetting(d.key, d.val); haptic(); break;
-    case 'toggle': setSetting(d.key, !S.settings[d.key]); haptic(); break;
+    case 'set': setSetting(d.key, d.val); break;
+    case 'toggle': setSetting(d.key, !S.settings[d.key]); break;
     case 'subj-reset': {
       const c = { ...S.settings.subjectColors }; delete c[d.k];
       const n = { ...S.settings.subjectNames }; delete n[d.k];
@@ -320,6 +318,26 @@ function onClick(e) {
     case 'iserv-open': if (d.url) IS.iservOpenUrl(d.url); else IS.iservOpen(d.path); break;
     case 'iserv-logout': if (confirm(t('Disconnect IServ?'))) { IS.disconnect(); native.iservBackground({ enabled: false }); } break;
     case 'open-room': IS.openRoom(d.id); break;
+    case 'chat-attach': IS.openAttachMenu(); break;
+    case 'pick': $(`#${d.input}`)?.click(); break;
+    case 'voice-start': IS.voiceStart(); break;
+    case 'voice-send': IS.voiceStop(true); break;
+    case 'voice-cancel': IS.voiceStop(false); break;
+    case 'voice-play': IS.playVoice(d.mxc, d.id); break;
+    case 'img-view': IS.viewImage(d.mxc); break;
+    case 'msg-file': IS.downloadChatFile(d.mxc, d.name); break;
+    case 'msg-copy': IS.copyMessage(d.id); break;
+    case 'msg-delete': if (confirm(t('Delete this message for everyone?'))) IS.deleteMessage(d.id); break;
+    case 'new-chat': IS.openNewChat(); break;
+    case 'start-dm': IS.startDirect(d.id); break;
+    case 'file-open': IS.openFile(d.p); break;
+    case 'file-menu': IS.fileMenu(d.p); break;
+    case 'file-rename': IS.fileRename(d.p); break;
+    case 'file-delete': IS.fileDelete(d.p); break;
+    case 'file-mkdir': IS.fileMkdir(); break;
+    case 'file-upload': $('#file-up')?.click(); break;
+    case 'is-task': IS.openTask(d.id); break;
+    case 'is-tasks-retry': S.iservTasks = null; IS.retry('tasks'); render(); break;
     case 'hw-add': A.openHomeworkForm(); break;
     case 'hw-save': A.saveHomework(); break;
     case 'hw-open': A.openHomework(d.key); break;
@@ -383,6 +401,10 @@ function onInput(e) {
   const el = e.target;
   if (el.id === 'browse-q') { openBrowse.setQuery(el.value); return; }
   if (el.id === 'room-q') { IS.filterRooms(el.value); return; }
+  if (el.id === 'chat-photo' || el.id === 'chat-camera') { IS.sendFiles(el.files, true); el.value = ''; return; }
+  if (el.id === 'chat-file') { IS.sendFiles(el.files, false); el.value = ''; return; }
+  if (el.id === 'file-up') { IS.fileUpload(el.files); el.value = ''; return; }
+  if (el.id === 'user-q') { IS.openNewChat.search(el.value.trim()); return; }
   if (el.id === 'ai-file') { A.attachFiles(el.files); el.value = ''; return; }
   if (el.id === 'ai-input') { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; return; }
   if (el.id === 'msg-input') { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; return; }
@@ -452,7 +474,6 @@ function boot() {
     const v = sel.value;
     const txt = sel.closest('label')?.querySelector('.dd-val, .dd-text');
     if (txt) txt.textContent = sel.selectedOptions[0]?.textContent || '';
-    haptic();
     switch (sel.dataset.dd) {
       case 'set': setSetting(sel.dataset.key, v); break;
       case 'g-weight': S.gradeWeight = v; break;
@@ -461,6 +482,10 @@ function boot() {
       case 'browse-kind': openBrowse.setKind(v); break;
       default:
     }
+  });
+  document.addEventListener('contextmenu', (e) => {
+    const m = e.target.closest?.('[data-msg]');
+    if (m && S.api) { e.preventDefault(); IS.messageMenu(m.dataset.msg); }
   });
   document.addEventListener('submit', (e) => {
     if (!S.api) return;
