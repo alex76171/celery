@@ -7,9 +7,8 @@ import {
 import { LANGS } from './i18n.js';
 import { native, hasNative } from './native.js';
 import { summarizeAudio, DEFAULT_MODEL } from './ai.js';
-import { normalizeIServHost, IServ } from './iserv.js';
 import {
-  loadGrades, loadAbsences, loadIServ, iservClient, offlineInfo, weekData, prepareDay, scheduleNative, ownElement,
+  loadGrades, loadAbsences, offlineInfo, weekData, prepareDay, scheduleNative, ownElement,
 } from './data.js';
 import { noteKey } from './views.js';
 import { render } from './app.js';
@@ -244,87 +243,6 @@ export function attDay(u) {
 }
 
 export function moveMonth(dir) { attMonth = new Date(attMonth.getFullYear(), attMonth.getMonth() + dir, 1); render(); }
-
-// ---------------------------------------------------------------- IServ
-const ISERV_LINKS = [
-  ['mail', 'mail', 'E-Mail'], ['file', 'folder', 'Files'], ['exercise', 'clipboard-list', 'Tasks'],
-  ['calendar', 'calendar-days', 'Calendar'], ['messenger', 'message-square', 'Messenger'], ['news', 'newspaper', 'News'],
-];
-
-export function viewIServ() {
-  const acc = store.iserv();
-  if (!acc) {
-    return `<div class="pad">
-      <div class="iserv-intro"${stagger(0)}><div class="logo small">${icon('school')}</div><h2>${esc(t('Connect IServ'))}</h2><p>${esc(t('See mails, notifications and dates from IServ right here.'))}</p></div>
-      <div class="card form"${stagger(1)}>
-        <label class="lbl">${esc(t('IServ address'))}</label>
-        <label class="input">${icon('globe')}<input id="is-host" placeholder="${esc(t('e.g. myschool.de'))}" autocapitalize="off" autocorrect="off"></label>
-        <label class="lbl">${esc(t('Username'))}</label>
-        <label class="input">${icon('user')}<input id="is-user" value="${esc(S.account.username)}" placeholder="vorname.nachname" autocapitalize="off" autocorrect="off"></label>
-        <label class="lbl">${esc(t('Password'))}</label>
-        <label class="input">${icon('lock')}<input id="is-pass" type="password" placeholder="${esc(t('Leave empty to use your WebUntis password'))}"></label>
-        <button class="btn" data-act="iserv-connect">${esc(t('Connect'))}</button>
-      </div></div>`;
-  }
-  const d = S.iservData;
-  if (!d && !S.loading) loadIServ(false);
-  const notes = d?.notifications;
-  const mail = d?.mail;
-  const events = d?.events;
-  const fmtD = (x) => { const dt = new Date(x); return Number.isNaN(dt.getTime()) ? String(x || '') : `${relDay(dt)} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`; };
-  return `<div class="pad">
-    <div class="iserv-head"${stagger(0)}><div class="logo small">${icon('school')}</div><div><b>IServ</b><small>${esc(acc.host)} · ${esc(acc.username)}</small></div><button class="icon-btn" data-act="iserv-open" data-path="">${icon('external-link')}</button></div>
-    <div class="tiles six">${ISERV_LINKS.map(([path, ic, label], i) => `<button class="tile" data-act="iserv-open" data-path="${path}"${stagger(i + 1)}><span class="tile-ic">${icon(ic)}</span><b>${esc(t(label))}</b></button>`).join('')}</div>
-    <div class="section-title">${icon('bell')}${esc(t('Notifications'))}</div>
-    ${!d ? skeleton(2) : notes === null ? `<p class="hint">${esc(t('Not available on your IServ.'))}</p>` : notes.length ? `<div class="card">${notes.slice(0, 15).map((n) => `<button class="d-row tap ${n.read ? '' : 'unread'}" data-act="iserv-open" data-url="${esc(n.url)}">${icon('bell')}<div><span>${esc(n.title)}</span><small>${esc(n.text)}${n.date ? ` · ${esc(fmtD(n.date))}` : ''}</small></div></button>`).join('')}</div>` : `<p class="hint">${esc(t('No notifications'))}</p>`}
-    <div class="section-title">${icon('inbox')}${esc(t('Inbox'))}</div>
-    ${!d ? skeleton(2) : mail === null ? `<p class="hint">${esc(t('Not available on your IServ.'))}</p>` : mail.length ? `<div class="card">${mail.slice(0, 12).map((m) => `<button class="d-row tap ${m.seen ? '' : 'unread'}" data-act="iserv-open" data-path="mail">${icon('mail')}<div><span>${esc(m.subject)}</span><small>${esc(m.from)}${m.date ? ` · ${esc(fmtD(m.date))}` : ''}</small></div></button>`).join('')}</div>` : `<p class="hint">${esc(t('Inbox is empty'))}</p>`}
-    <div class="section-title">${icon('calendar-days')}${esc(t('Upcoming dates'))}</div>
-    ${!d ? skeleton(1) : events?.length ? `<div class="card">${events.slice(0, 10).map((e) => `<div class="d-row">${icon('calendar')}<div><span>${esc(e.title)}</span><small>${esc(fmtD(e.start))}${e.location ? ` · ${esc(e.location)}` : ''}</small></div></div>`).join('')}</div>` : `<p class="hint">${esc(t('No upcoming dates'))}</p>`}
-    <div class="card" style="margin-top:16px"><button class="row danger" data-act="iserv-logout"><span class="row-ic">${icon('log-out')}</span><span class="row-text"><b>${esc(t('Disconnect IServ'))}</b></span></button></div>
-  </div>`;
-}
-
-export async function iservConnect() {
-  const host = normalizeIServHost(document.getElementById('is-host').value);
-  const username = document.getElementById('is-user').value.trim();
-  const password = document.getElementById('is-pass').value || S.account.password;
-  if (!host || !username) { toast(t('Fill in the IServ address and username'), 'err'); return; }
-  toast(t('Connecting…'));
-  try {
-    const c = new IServ({ host, username, password });
-    await c.login();
-    store.setIServ({ host, username, password });
-    S.iserv = c;
-    S.iservData = null;
-    render();
-    loadIServ(false);
-  } catch (e) { toast(t(e.message), 'err'); }
-}
-
-function iservCss() {
-  const dark = isDark();
-  const r = S.settings.radius;
-  return `
-  :root{--lessn-accent:${S.settings.accent}}
-  body{font-family:system-ui,Roboto,sans-serif!important;-webkit-font-smoothing:antialiased}
-  .panel,.card,.dropdown-menu,.modal-content,.list-group-item,.well{border-radius:${r}px!important;border-color:rgba(127,127,127,.18)!important;box-shadow:none!important}
-  .btn,.form-control,.input-group,.select2-selection,input,select,textarea{border-radius:${Math.max(6, r - 4)}px!important}
-  .btn-primary,.btn-success,.label-primary,.badge-primary{background:var(--lessn-accent)!important;border-color:var(--lessn-accent)!important}
-  a{color:var(--lessn-accent)}
-  .navbar,#idesk-sidebar,.sidebar,header{box-shadow:none!important}
-  table.table>tbody>tr>td{padding-top:10px!important;padding-bottom:10px!important}
-  ${dark ? `html{filter:invert(.92) hue-rotate(180deg);background:#fff}
-  img,video,picture,canvas,iframe,[style*="background-image"],.avatar{filter:invert(1) hue-rotate(180deg)}` : ''}`;
-}
-
-export function iservOpen(path, url) {
-  const acc = store.iserv();
-  if (!acc) return;
-  let target = `https://${acc.host}/iserv/${path || ''}`;
-  if (url) target = /^https?:/.test(url) ? url : `https://${acc.host}${url.startsWith('/') ? '' : '/'}${url}`;
-  native.openIServ({ url: target, username: acc.username, password: acc.password, css: iservCss(), bg: isDark() ? '#141414' : '#ffffff' });
-}
 
 // ---------------------------------------------------------------- Recorder (beta)
 const REC_KEY = 'rec';

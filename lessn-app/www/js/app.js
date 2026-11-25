@@ -10,12 +10,13 @@ import {
 } from './data.js';
 import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone } from './views.js';
 import {
-  viewMore, viewGrades, viewAttendance, viewIServ, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
-  openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth, iservConnect, iservOpen,
+  viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
+  openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
   recStart, recStop, recState, processSummary, openSummary, deleteSummary, openNotifSettings, notifToggle, dndToggle,
   directions, setS, loadPresence,
 } from './features.js';
 import { renderLogin, bindLogin } from './login.js';
+import * as IS from './iserv-ui.js';
 
 const TABS = [
   { id: 'today', label: 'Home', icon: 'house' },
@@ -24,8 +25,13 @@ const TABS = [
   { id: 'exams', label: 'Exams', icon: 'graduation-cap' },
   { id: 'more', label: 'Menu', icon: 'layout-grid' },
 ];
-const SUBVIEWS = { grades: 'Grades', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder' };
-const ORDER = ['today', 'week', 'tasks', 'exams', 'more', 'grades', 'iserv', 'attendance', 'recorder'];
+const SUBVIEWS = {
+  grades: 'Grades', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder',
+  'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications',
+};
+const PARENT = { 'is-chat': 'iserv', 'is-mail': 'iserv', 'is-files': 'iserv', 'is-cal': 'iserv', 'is-notes': 'iserv', 'is-room': 'is-chat' };
+const parentOf = (v) => PARENT[v] || 'more';
+const ORDER = ['today', 'week', 'tasks', 'exams', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-room'];
 
 // ---------------------------------------------------------------- shell
 function renderShell() {
@@ -58,7 +64,8 @@ export function updateHeader() {
     today: S.settings.appTitle || relDay(S.day), week: S.element ? S.element.label : t('Timetable'),
     tasks: t('Homework'), exams: t('Exams'), more: t('Menu'),
   };
-  title.textContent = titles[v] || t(SUBVIEWS[v] || '');
+  title.textContent = v === 'is-room' ? IS.roomTitle() : titles[v] || t(SUBVIEWS[v] || '');
+  $('#app').classList.toggle('chat-mode', v === 'is-room');
   const now = toUntisDate(new Date());
   const subs = {
     today: fmt(S.day, { weekday: 'long', day: 'numeric', month: 'long' }),
@@ -67,6 +74,7 @@ export function updateHeader() {
     exams: S.exams ? t('{n} upcoming', { n: S.exams.filter((e) => e.date >= now).length }) : '',
     more: S.account?.schoolName || S.account?.school || '',
     grades: t('This school year'), iserv: store.iserv()?.host || '', attendance: t('Your attendance'), recorder: 'Beta',
+    'is-chat': 'IServ', 'is-mail': 'IServ', 'is-files': 'IServ', 'is-cal': 'IServ', 'is-notes': 'IServ', 'is-room': 'IServ Messenger',
   };
   const sub = $('#subtitle');
   sub.textContent = S.offline ? t('Offline · showing saved data') : subs[v] || '';
@@ -100,7 +108,12 @@ export function render() {
   const content = $('#content');
   const same = lastView === S.view && !S.anim;
   const keep = same ? main.scrollTop : 0;
-  const views = { today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance, iserv: viewIServ, recorder: viewRecorder };
+  const views = {
+    today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance,
+    recorder: viewRecorder, iserv: IS.viewIServHub, 'is-chat': IS.viewChats, 'is-room': IS.viewRoom, 'is-mail': IS.viewMail,
+    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes,
+  };
+  if (S.view === 'is-room' && lastView === 'is-room' && !S.anim) { updateHeader(); return; }
   content.innerHTML = views[S.view]();
   const anim = S.anim && S.settings.animations ? `anim anim-${S.anim}` : '';
   content.className = '';
@@ -121,6 +134,7 @@ export function setView(v, dir) {
   if (v === 'exams' && !S.exams) loadExams();
   if (v === 'week' || v === 'today') loadWeek(S.week);
   if (v === 'iserv' && iservClient()) loadIServ();
+  if (v === 'is-chat' || v === 'is-room') IS.resumePolling();
   if (v === 'attendance') loadPresence();
 }
 
@@ -231,8 +245,8 @@ function onClick(e) {
   const d = el.dataset;
   switch (d.act) {
     case 'tab': setView(d.view); break;
-    case 'nav': closeSheet(true); setView(d.view, 'left'); break;
-    case 'back': setView('more', 'right'); break;
+    case 'nav': closeSheet(true); if (d.view === 'is-room') break; setView(d.view, 'left'); break;
+    case 'back': setView(parentOf(S.view), 'right'); break;
     case 'day': haptic(); setDay(fromUntisDate(Number(d.d))); break;
     case 'goto-day': S.view = 'today'; setDay(fromUntisDate(Number(d.d)), 'fade'); break;
     case 'week-prev': haptic(); shiftWeek(-1); break;
@@ -297,9 +311,22 @@ function onClick(e) {
     case 'att-day': attDay(d.d); break;
     case 'att-set': native.setPresence(d.d, d.st).then(() => { closeSheet(); loadPresence(); }); break;
     // iserv
-    case 'iserv-connect': iservConnect(); break;
-    case 'iserv-open': iservOpen(d.path, d.url); break;
-    case 'iserv-logout': store.setIServ(null); S.iserv = null; S.iservData = null; store.setCache('iserv', null); render(); break;
+    case 'iserv-connect': IS.connect(); break;
+    case 'iserv-open': if (d.url) IS.iservOpenUrl(d.url); else IS.iservOpen(d.path); break;
+    case 'iserv-logout': if (confirm(t('Disconnect IServ?'))) IS.disconnect(); break;
+    case 'open-room': IS.openRoom(d.id); break;
+    case 'older-msgs': IS.olderMessages(); break;
+    case 'is-rooms-retry': IS.retry('rooms'); break;
+    case 'is-mail-retry': IS.retry('mail'); break;
+    case 'is-files-retry': IS.retry('files'); break;
+    case 'is-cal-retry': IS.retry('events'); break;
+    case 'mail-folder': IS.setFolder(d.f); break;
+    case 'mail-more': IS.loadMail(true); break;
+    case 'open-mail': IS.openMail(Number(d.i)); break;
+    case 'files-go': IS.loadFiles(d.p); break;
+    case 'file-dl': IS.downloadFile(d.p); break;
+    case 'is-note': IS.openNote(d.id, d.url); break;
+    case 'is-read-all': IS.readAll(); break;
     // recorder
     case 'ai-getkey': native.openUrl('https://aistudio.google.com/apikey'); break;
     case 'ai-savekey': {
@@ -320,6 +347,8 @@ function onClick(e) {
 function onInput(e) {
   const el = e.target;
   if (el.id === 'browse-q') { openBrowse.setQuery(el.value); return; }
+  if (el.id === 'room-q') { IS.filterRooms(el.value); return; }
+  if (el.id === 'msg-input') { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; return; }
   if (el.dataset.subjName !== undefined) {
     const n = { ...S.settings.subjectNames };
     if (el.value.trim()) n[el.dataset.subjName] = el.value.trim(); else delete n[el.dataset.subjName];
@@ -377,6 +406,10 @@ function boot() {
   document.addEventListener('click', (e) => { if (S.api) onClick(e); });
   document.addEventListener('input', (e) => { if (S.api) onInput(e); });
   document.addEventListener('change', (e) => { if (S.api && e.target.type === 'color' && sheetState) rerenderSheet(); });
+  document.addEventListener('submit', (e) => { if (S.api && e.target.id === 'composer') { e.preventDefault(); IS.sendMessage(); } });
+  document.addEventListener('keydown', (e) => {
+    if (S.api && e.target.id === 'msg-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); IS.sendMessage(); }
+  });
   document.addEventListener('visibilitychange', () => {
     if (!S.api || document.hidden) return;
     if (S.settings.autoRefresh && Date.now() - S.lastRefresh > 5 * 60000) {
@@ -384,11 +417,12 @@ function boot() {
       refresh();
     }
     if (S.view === 'recorder' || S.view === 'attendance') render();
+    IS.resumePolling();
   });
   plugin('App')?.addListener('backButton', () => {
     if (!S.api) return;
     if (closeSheet()) return;
-    if (SUBVIEWS[S.view]) { setView('more', 'right'); return; }
+    if (SUBVIEWS[S.view]) { setView(parentOf(S.view), 'right'); return; }
     if (S.element) { S.element = null; render(); return; }
     if (S.view !== S.settings.startView) { setView(S.settings.startView, 'right'); return; }
     safe(plugin('App').exitApp());

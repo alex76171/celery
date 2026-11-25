@@ -226,6 +226,42 @@ public class LessnPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void davList(PluginCall call) {
+        new Thread(() -> {
+            try {
+                Dav.Result r = Dav.propfind(call.getString("host"), call.getString("path", "/"), call.getString("username"), call.getString("password"));
+                JSObject o = new JSObject();
+                o.put("status", r.status);
+                o.put("body", r.body);
+                call.resolve(o);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "WebDAV error" : e.getMessage());
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void download(PluginCall call) {
+        try {
+            String url = call.getString("url");
+            String name = call.getString("filename", "download");
+            android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(Uri.parse(url));
+            JSObject headers = call.getObject("headers", new JSObject());
+            java.util.Iterator<String> keys = headers.keys();
+            while (keys.hasNext()) { String k = keys.next(); r.addRequestHeader(k, headers.getString(k)); }
+            String cookie = android.webkit.CookieManager.getInstance().getCookie(url);
+            if (cookie != null) r.addRequestHeader("Cookie", cookie);
+            r.setTitle(name);
+            r.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            r.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name);
+            ((android.app.DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(r);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    @PluginMethod
     public void openIServ(PluginCall call) {
         Intent i = new Intent(getContext(), IServActivity.class)
             .putExtra("url", call.getString("url"))

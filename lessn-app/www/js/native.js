@@ -23,5 +23,7 @@ export const native = {
   recordingStatus: () => call('recordingStatus').catch(() => ({ recording: false })),
   readFile: (path) => call('readFileBase64', { path }),
   deleteFile: (path) => call('deleteFile', { path }).catch(() => {}),
+  davList: (opts) => call('davList', opts),
+  download: (opts) => (hasNative() ? call('download', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
   openIServ: (opts) => (hasNative() ? call('openIServ', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
 };

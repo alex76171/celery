@@ -3,7 +3,7 @@ import {
   S, t, store, toUntisDate, fromUntisDate, addDays, mondayOf, startOfDay, fmtTime, toast, subjKey, subjName, fmt,
 } from './core.js';
 import { native } from './native.js';
-import { IServ } from './iserv.js';
+import { client as iservUiClient, refreshHub } from './iserv-ui.js';
 import { render, updateHeader } from './app.js';
 
 // ---------------------------------------------------------------- cache keys
@@ -110,29 +110,11 @@ export const loadGrades = (quiet = true) => run(async () => {
   }
 }, { quiet });
 
-export function iservClient() {
-  const acc = store.iserv();
-  if (!acc) return null;
-  if (!S.iserv || S.iserv.host !== acc.host || S.iserv.username !== acc.username) S.iserv = new IServ(acc);
-  return S.iserv;
-}
-
-export const loadIServ = (quiet = true) => run(async () => {
-  const c = iservClient();
-  if (!c) return;
-  const [n, m, e] = await Promise.allSettled([c.notifications(), c.mail(), c.events()]);
-  const failed = [n, m, e].every((x) => x.status === 'rejected');
-  if (failed) throw n.reason;
-  S.iservData = {
-    notifications: n.status === 'fulfilled' ? n.value : null,
-    mail: m.status === 'fulfilled' ? m.value : null,
-    events: e.status === 'fulfilled' ? e.value : null,
-    t: Date.now(),
-  };
-  store.setCache('iserv', S.iservData);
-}, { quiet });
+export const iservClient = () => iservUiClient();
+export const loadIServ = () => refreshHub();
 
 export async function refresh(force = true) {
+  if (S.view === 'iserv' || S.view.startsWith('is-')) { refreshHub(); return; }
   S.lastRefresh = Date.now();
   const ok = await run(async () => {
     await S.api.login();
