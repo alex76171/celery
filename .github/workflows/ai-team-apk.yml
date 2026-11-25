@@ -1,0 +1,55 @@
+name: AI Team Studio – build Android APK
+
+on:
+  push:
+    paths:
+      - 'ai-team/**'
+      - '.github/workflows/ai-team-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Bundle the web app into the APK assets
+        run: |
+          mkdir -p ai-team/android/app/src/main/assets/www
+          cp ai-team/index.html ai-team/manifest.webmanifest ai-team/sw.js ai-team/icon.svg ai-team/icon-192.png ai-team/icon-512.png ai-team/android/app/src/main/assets/www/
+
+      - name: Build debug APK
+        working-directory: ai-team/android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp ai-team/android/app/build/outputs/apk/debug/app-debug.apk AI-Team-Studio.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Team-Studio-apk
+          path: AI-Team-Studio.apk
+
+      - name: Publish to the "ai-team-latest" release (easy phone download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ai-team-latest --yes --cleanup-tag || true
+          gh release create ai-team-latest AI-Team-Studio.apk \
+            --target "${{ github.sha }}" \
+            --title "AI Team Studio (latest build)" \
+            --notes "Android APK built from ${{ github.ref_name }} @ ${{ github.sha }}. Download AI-Team-Studio.apk on your phone and open it to install (allow 'install unknown apps' when asked)." \
+            --prerelease

@@ -1,0 +1,8 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+# the web app is copied here at build time from ../index.html etc.
+app/src/main/assets/www/

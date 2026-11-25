@@ -1,0 +1,1786 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<meta name="description" content="Link AI agents together into a team that works on your project.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>AI Team Studio</title>
+<style>
+:root{
+  --bg:#0f1117;--bg2:#161924;--panel:#1b1f2c;--panel2:#222738;--line:#2e3448;--text:#e7e9f0;--muted:#9097ab;
+  --accent:#7c6cff;--accent2:#22c3a6;--warn:#f5a524;--err:#f0506e;--ok:#2fbf71;--link:#6b7495;
+  --radius:12px;--shadow:0 8px 30px rgba(0,0,0,.35);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){--bg:#f4f5fa;--bg2:#eceef6;--panel:#ffffff;--panel2:#f2f3f9;--line:#d9dce8;--text:#1b1e2b;--muted:#646b82;--link:#9aa1bb;--shadow:0 8px 30px rgba(30,40,80,.12)}
+}
+:root[data-theme="light"]{--bg:#f4f5fa;--bg2:#eceef6;--panel:#ffffff;--panel2:#f2f3f9;--line:#d9dce8;--text:#1b1e2b;--muted:#646b82;--link:#9aa1bb;--shadow:0 8px 30px rgba(30,40,80,.12)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+body{display:flex;flex-direction:column;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:7px 12px;transition:.15s}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.primary:hover{filter:brightness(1.1)}
+button.danger{color:var(--err)}
+button.ghost{background:transparent;border-color:transparent}
+button.ghost:hover{background:var(--panel2)}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:70px;font-family:inherit}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;font-weight:600;letter-spacing:.02em}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.hidden{display:none!important}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:11px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+
+/* top bar */
+header.top{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--bg2);padding-top:max(8px,env(safe-area-inset-top))}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;white-space:nowrap}
+.brand svg{width:26px;height:26px}
+nav.tabs{display:flex;gap:4px;margin-left:auto}
+nav.tabs button{background:transparent;border-color:transparent;color:var(--muted);display:flex;align-items:center;gap:6px}
+nav.tabs button.active{background:var(--panel);border-color:var(--line);color:var(--text)}
+nav.tabs .ico{font-size:15px}
+.runbadge{width:8px;height:8px;border-radius:50%;background:var(--ok);display:none;animation:pulse 1s infinite}
+body.running .runbadge{display:inline-block}
+@keyframes pulse{50%{opacity:.3}}
+
+main{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0;display:none;flex-direction:column}
+.view.active{display:flex}
+.scroll{overflow:auto;-webkit-overflow-scrolling:touch}
+.pad{padding:16px}
+.wrap{max-width:980px;margin:0 auto;width:100%}
+
+/* toolbar */
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+.toolbar input.teamname{width:190px;font-weight:600}
+.toolbar select{width:auto}
+.modeopts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.modeopts .opt{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.modeopts .opt input{width:64px;padding:5px 7px}
+.modeopts .opt select{padding:5px 7px}
+
+/* canvas */
+#canvas{flex:1;position:relative;overflow:hidden;touch-action:none;background:
+  radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0/22px 22px, var(--bg)}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#links{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
+#links path.hit{pointer-events:stroke;stroke:transparent;stroke-width:18;fill:none;cursor:pointer}
+#links path.edge{fill:none;stroke:var(--link);stroke-width:2.2}
+#links path.edge.loop{stroke:var(--warn);stroke-dasharray:7 6}
+#links path.edge.active{stroke:var(--accent2);stroke-width:3;stroke-dasharray:8 6;animation:flow .6s linear infinite}
+#links path.edge.temp{stroke:var(--accent);stroke-dasharray:5 5}
+#links text{fill:var(--warn);font-size:11px;font-weight:700}
+@keyframes flow{to{stroke-dashoffset:-14}}
+.node{position:absolute;width:210px;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;box-shadow:var(--shadow);user-select:none;-webkit-user-select:none;touch-action:none}
+.node .head{display:flex;align-items:center;gap:8px;padding:10px 12px 6px;cursor:grab}
+.node .emo{font-size:22px;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--panel2)}
+.node .nm{font-weight:700;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .rl{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .meta{padding:0 12px 10px;display:flex;gap:6px;flex-wrap:wrap}
+.node .port{position:absolute;top:50%;width:18px;height:18px;margin-top:-9px;border-radius:50%;background:var(--panel);border:2px solid var(--link)}
+.node .port.in{left:-10px}
+.node .port.out{right:-10px;cursor:crosshair;border-color:var(--accent);background:var(--accent)}
+.node .port.out:hover{transform:scale(1.25)}
+.node.sel{border-color:var(--accent)}
+.node.running{border-color:var(--accent2);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent2) 30%,transparent),var(--shadow)}
+.node.done{border-color:var(--ok)}
+.node.error{border-color:var(--err)}
+.node.waiting{opacity:.75}
+.node .badge{position:absolute;top:-9px;right:12px;font-size:10px;padding:1px 7px;border-radius:99px;background:var(--accent2);color:#04241e;font-weight:700;display:none}
+.node.running .badge{display:block}
+.node.mgr{border-style:double;border-width:3px}
+.canvas-ctl{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px}
+.canvas-ctl button{width:38px;height:38px;padding:0;font-size:18px;background:var(--panel)}
+.canvas-hint{position:absolute;left:12px;bottom:12px;font-size:12px;color:var(--muted);background:color-mix(in srgb,var(--panel) 85%,transparent);border:1px solid var(--line);padding:6px 10px;border-radius:9px;max-width:min(520px,calc(100% - 80px))}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
+.empty>div{pointer-events:auto;max-width:380px;padding:20px}
+.empty h2{margin:0 0 6px}
+
+/* run view */
+.runlayout{display:grid;grid-template-columns:340px 1fr;flex:1;min-height:0}
+.runside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:var(--bg2)}
+.runmain{display:flex;flex-direction:column;min-height:0}
+.runhead{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+#log{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.card{flex:none;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card .ch{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.card .ch .emo{font-size:18px}
+.card .cb{padding:4px 14px 12px;overflow-wrap:anywhere}
+.card.collapsed .cb{display:none}
+.card.collapsed .ch{border-bottom:0}
+.card.sys{background:transparent;border-style:dashed}
+.card.sys .cb{padding:8px 14px;color:var(--muted)}
+.card.final{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.card.err{border-color:var(--err)}
+.card pre.stream{white-space:pre-wrap;font-family:inherit;margin:8px 0}
+.status{font-size:11px;padding:1px 8px;border-radius:99px;font-weight:700}
+.status.running{background:color-mix(in srgb,var(--accent2) 20%,transparent);color:var(--accent2)}
+.status.done{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.status.error{background:color-mix(in srgb,var(--err) 18%,transparent);color:var(--err)}
+.status.approved{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.status.changes{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.stats{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+
+/* markdown */
+.md h1,.md h2,.md h3,.md h4{margin:14px 0 6px;line-height:1.25}
+.md h1{font-size:1.35em}.md h2{font-size:1.2em}.md h3{font-size:1.06em}
+.md p{margin:8px 0}
+.md ul,.md ol{margin:6px 0;padding-left:22px}
+.md code{font-family:var(--mono);font-size:.9em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+.md blockquote{margin:8px 0;padding:4px 12px;border-left:3px solid var(--accent);color:var(--muted)}
+.md hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+.md a{color:var(--accent)}
+.md table{border-collapse:collapse;margin:8px 0;display:block;overflow:auto}
+.md th,.md td{border:1px solid var(--line);padding:4px 8px}
+.codebox{position:relative;margin:8px 0;border:1px solid var(--line);border-radius:10px;background:var(--bg2);overflow:hidden}
+.codebox .cbh{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 10px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line)}
+.codebox .cbh button{padding:2px 8px;font-size:11px;margin-left:auto}
+.codebox pre{margin:0;padding:10px 12px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.45;max-height:460px}
+
+/* files */
+.fileslayout{display:grid;grid-template-columns:280px 1fr;flex:1;min-height:0}
+.filelist{border-right:1px solid var(--line);overflow:auto;padding:10px;background:var(--bg2)}
+.fileitem{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;border:1px solid transparent}
+.fileitem:hover{background:var(--panel)}
+.fileitem.sel{background:var(--panel);border-color:var(--accent)}
+.fileitem .fn{font-family:var(--mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fileview{display:flex;flex-direction:column;min-height:0}
+.fileview .fvh{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.fileview pre{flex:1;margin:0;overflow:auto;padding:14px;font-family:var(--mono);font-size:12.5px;white-space:pre;background:var(--bg)}
+.fileview iframe{flex:1;border:0;background:#fff;width:100%}
+
+/* settings & guide */
+.sect{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.sect h3{margin:0 0 4px}
+.provgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.prov{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.prov h4{margin:0;display:flex;align-items:center;gap:6px}
+.prov .ok{color:var(--ok)}
+.guide h2{margin-top:26px}
+.guide h3{margin-top:18px}
+.guide li{margin:4px 0}
+.guide .step{display:flex;gap:12px;margin:12px 0}
+.guide .num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700}
+.kbd{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+
+/* drawer & modal */
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(430px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);transform:translateX(105%);transition:transform .22s ease;z-index:20;display:flex;flex-direction:column}
+#drawer.open{transform:none}
+#drawer .dh{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);padding-top:max(12px,env(safe-area-inset-top))}
+#drawer .db{flex:1;overflow:auto;padding:4px 16px 20px}
+#drawer .df{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);flex-wrap:wrap;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+.chk{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--bg2);margin-bottom:5px;cursor:pointer}
+.chk input{width:auto}
+#modalbg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;display:none;align-items:center;justify-content:center;padding:16px}
+#modalbg.open{display:flex}
+#modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);width:min(860px,100%);max-height:calc(100% - 20px);display:flex;flex-direction:column}
+#modal .mh{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+#modal .mh h3{margin:0}
+#modal .mb{padding:16px;overflow:auto}
+.tplgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.tpl{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:.15s}
+.tpl:hover{border-color:var(--accent);transform:translateY(-2px)}
+.tpl .t{font-weight:700;margin-bottom:4px}
+.tpl .e{font-size:20px;letter-spacing:2px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;z-index:40;pointer-events:none;max-width:90%}
+#toast.show{opacity:1;transform:translateX(-50%)}
+
+/* mobile */
+@media (max-width:820px){
+  header.top{padding:8px 10px}
+  .brand span{display:none}
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--bg2);border-top:1px solid var(--line);justify-content:space-around;padding:4px 4px max(4px,env(safe-area-inset-bottom));z-index:15;margin:0}
+  nav.tabs button{flex-direction:column;gap:0;font-size:11px;padding:5px 4px;flex:1}
+  nav.tabs .ico{font-size:19px}
+  main{margin-bottom:calc(56px + env(safe-area-inset-bottom))}
+  .runlayout,.fileslayout{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .runside{border-right:0;border-bottom:1px solid var(--line);max-height:46vh}
+  .filelist{border-right:0;border-bottom:1px solid var(--line);max-height:30vh}
+  .toolbar input.teamname{width:140px}
+  .canvas-hint{display:none}
+  #toast{bottom:80px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c6cff"/><stop offset="1" stop-color="#22c3a6"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#bg1)"/><g stroke="#fff" stroke-width="3.5" fill="none"><path d="M20 22 L44 22 M20 22 L32 44 M44 22 L32 44"/></g><g fill="#fff"><circle cx="20" cy="22" r="7"/><circle cx="44" cy="22" r="7"/><circle cx="32" cy="44" r="7"/></g></svg>
+    <span>AI Team Studio</span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="team" class="active"><span class="ico">🧩</span><span>Team</span></button>
+    <button data-tab="run"><span class="ico">▶️</span><span>Run</span><i class="runbadge"></i></button>
+    <button data-tab="files"><span class="ico">📁</span><span>Files</span></button>
+    <button data-tab="settings"><span class="ico">⚙️</span><span>Settings</span></button>
+    <button data-tab="guide"><span class="ico">📖</span><span>Guide</span></button>
+  </nav>
+</header>
+
+<main>
+  <!-- TEAM -->
+  <section class="view active" id="view-team">
+    <div class="toolbar">
+      <input class="teamname" id="teamName" placeholder="Team name" aria-label="Team name">
+      <button id="btnTemplates">✨ Templates</button>
+      <button id="btnAddAgent" class="primary">＋ Agent</button>
+      <select id="modeSel" aria-label="Collaboration mode">
+        <option value="pipeline">🔗 Pipeline (follow links)</option>
+        <option value="roundtable">💬 Round-table discussion</option>
+        <option value="manager">👑 Manager delegates</option>
+      </select>
+      <div class="modeopts" id="modeOpts"></div>
+      <div class="grow"></div>
+      <button id="btnTeams" title="Save / load teams">💾 Teams</button>
+      <button id="btnGoRun" class="primary">Run ▶</button>
+    </div>
+    <div id="canvas">
+      <div id="world"><svg id="links"></svg><div id="nodes"></div></div>
+      <div class="empty hidden" id="emptyCanvas"><div>
+        <h2>Build your AI team</h2>
+        <p class="muted">Start from a template, or add agents and drag from the <b style="color:var(--accent)">●</b> dot on one agent to another to link them.</p>
+        <div class="row" style="justify-content:center"><button class="primary" onclick="openTemplates()">✨ Pick a template</button><button onclick="addAgent()">＋ Blank agent</button></div>
+      </div></div>
+      <div class="canvas-hint" id="canvasHint"></div>
+      <div class="canvas-ctl">
+        <button id="zoomIn" title="Zoom in">＋</button>
+        <button id="zoomOut" title="Zoom out">－</button>
+        <button id="zoomFit" title="Fit to screen">⤢</button>
+        <button id="autoLayout" title="Auto-arrange">☷</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RUN -->
+  <section class="view" id="view-run">
+    <div class="runlayout">
+      <div class="runside">
+        <label for="goal" style="margin-top:0">Project goal</label>
+        <textarea id="goal" rows="6" placeholder="Describe what the team should build or produce. E.g. 'Build a single-file HTML to-do app with dark mode, drag-to-reorder and local storage.'"></textarea>
+        <label for="ctxt">Extra context / requirements (optional)</label>
+        <textarea id="ctxt" rows="4" placeholder="Constraints, audience, tech stack, existing code, style guide…"></textarea>
+        <div class="row" style="margin-top:12px">
+          <button class="primary grow" id="btnRun">▶ Run team</button>
+          <button class="danger" id="btnStop" disabled>■ Stop</button>
+        </div>
+        <div id="contBox" class="hidden">
+          <label for="feedback">Your feedback → continue the project</label>
+          <textarea id="feedback" rows="3" placeholder="What should the team change or add next?"></textarea>
+          <button class="grow" id="btnContinue" style="width:100%;margin-top:8px">↻ Continue with feedback</button>
+        </div>
+        <div class="sect" style="margin-top:14px;padding:12px">
+          <div class="small muted" id="runSummary"></div>
+        </div>
+      </div>
+      <div class="runmain">
+        <div class="runhead">
+          <b id="runTitle">Activity</b>
+          <div class="stats" id="stats"></div>
+          <div class="grow"></div>
+          <button class="ghost" id="btnCollapse" title="Collapse / expand all">↕ Collapse</button>
+          <button class="ghost" id="btnExportMd">⬇ Report</button>
+          <button class="ghost" id="btnClearLog">🗑 Clear</button>
+        </div>
+        <div id="log"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FILES -->
+  <section class="view" id="view-files">
+    <div class="fileslayout">
+      <div class="filelist">
+        <div class="row" style="margin-bottom:8px">
+          <b class="grow">Workspace</b>
+          <button id="btnZip" title="Download all files as .zip">⬇ ZIP</button>
+          <button id="btnClearFiles" title="Clear workspace" class="ghost">🗑</button>
+        </div>
+        <div id="fileItems"></div>
+      </div>
+      <div class="fileview" id="fileView"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view scroll" id="view-settings">
+    <div class="wrap pad">
+      <div class="sect">
+        <h3>AI providers & API keys</h3>
+        <p class="muted small">Keys are stored only on this device (browser local storage) and are sent only to the provider you choose. Use the <b>Demo</b> provider to try everything for free with simulated replies.</p>
+        <div class="provgrid" id="provGrid"></div>
+      </div>
+      <div class="sect">
+        <h3>Defaults for new agents</h3>
+        <div class="row">
+          <div class="grow"><label>Provider</label><select id="defProv"></select></div>
+          <div class="grow"><label>Model</label><input id="defModel" list="dl-defModel"><datalist id="dl-defModel"></datalist></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="btnApplyAll">Apply to every agent in the current team</button>
+        </div>
+      </div>
+      <div class="sect">
+        <h3>Run behaviour</h3>
+        <div class="row">
+          <div class="grow"><label>Max output tokens per turn (default)</label><input id="setMaxTok" type="number" min="256" step="256"></div>
+          <div class="grow"><label>Max characters passed between agents</label><input id="setMaxChars" type="number" min="2000" step="1000"></div>
+        </div>
+        <label class="chk" style="margin-top:10px"><input type="checkbox" id="setFallback"> Anthropic: auto-fallback to another model if a request is declined (server-side fallbacks)</label>
+        <label class="chk"><input type="checkbox" id="setAutoFiles"> Auto-extract files from agent replies into the Files workspace</label>
+      </div>
+      <div class="sect">
+        <h3>Appearance & data</h3>
+        <div class="row">
+          <div><label>Theme</label><select id="setTheme"><option value="auto">Auto</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btnExportAll">⬇ Back up everything (incl. keys)</button>
+          <button id="btnImportAll">⬆ Restore backup</button>
+          <button id="btnReset" class="danger">Reset app</button>
+        </div>
+      </div>
+      <p class="muted small" style="text-align:center">AI Team Studio · runs entirely on your device · <span id="installHint"></span></p>
+    </div>
+  </section>
+
+  <!-- GUIDE -->
+  <section class="view scroll" id="view-guide">
+    <div class="wrap pad guide md" id="guideBody"></div>
+  </section>
+</main>
+
+<div id="drawer" aria-hidden="true">
+  <div class="dh"><b class="grow" id="drTitle">Agent</b><button class="ghost" onclick="closeDrawer()">✕</button></div>
+  <div class="db" id="drBody"></div>
+  <div class="df" id="drFoot"></div>
+</div>
+<div id="modalbg"><div id="modal"><div class="mh"><h3 class="grow" id="mTitle"></h3><button class="ghost" onclick="closeModal()">✕</button></div><div class="mb" id="mBody"></div></div></div>
+<div id="toast"></div>
+<input type="file" id="filePick" class="hidden" accept=".json,application/json">
+
+<script>
+'use strict';
+/* =========================================================
+   AI Team Studio — single-file app
+   ========================================================= */
+const FENCE = '`'.repeat(3);
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const clone = o => JSON.parse(JSON.stringify(o));
+
+/* ---------------- Providers ---------------- */
+const PROVIDERS = {
+  mock:       {label:'Demo (free, simulated)', kind:'mock', models:['demo'], noKey:true,
+               help:'Simulated replies so you can learn the app without an API key.'},
+  anthropic:  {label:'Anthropic Claude', kind:'anthropic', models:['claude-opus-5-5','claude-sonnet-5-5','claude-haiku-5-5','claude-fable-5-2'],
+               help:'Get a key at console.anthropic.com → API Keys.'},
+  openai:     {label:'OpenAI', kind:'openai', base:'https://api.openai.com/v1', models:[],
+               help:'Get a key at platform.openai.com → API keys. Press “Fetch models” to list models.'},
+  gemini:     {label:'Google Gemini', kind:'gemini', models:[],
+               help:'Get a key at aistudio.google.com → Get API key. Press “Fetch models”.'},
+  openrouter: {label:'OpenRouter (hundreds of models)', kind:'openai', base:'https://openrouter.ai/api/v1', models:[],
+               help:'One key for many providers: openrouter.ai/keys.'},
+  groq:       {label:'Groq', kind:'openai', base:'https://api.groq.com/openai/v1', models:[],
+               help:'Fast open models: console.groq.com/keys.'},
+  ollama:     {label:'Ollama (local, free)', kind:'openai', base:'http://localhost:11434/v1', models:[], noKey:true,
+               help:'Run models on your computer. Start Ollama with OLLAMA_ORIGINS="*" so the browser may connect.'},
+  custom:     {label:'Custom (OpenAI-compatible)', kind:'openai', base:'', models:[],
+               noKey:true, help:'Any OpenAI-compatible endpoint: LM Studio, Together, DeepSeek, Mistral, vLLM…'},
+};
+
+/* ---------------- Agent presets ---------------- */
+const PRESETS = {
+  pm:        {name:'Product Manager', emoji:'🧭', role:'Turns the goal into clear requirements',
+    system:'You are a senior product manager. Turn the project goal into a crisp spec: target user, core features (prioritised, MVP first), user stories with acceptance criteria, non-goals, and open questions (answer them yourself with sensible assumptions). Keep it actionable and short enough for engineers to use directly.'},
+  architect: {name:'Architect', emoji:'🏛️', role:'Designs the technical solution',
+    system:'You are a pragmatic software architect. From the requirements, design the simplest solution that fully works: tech choices (prefer zero-dependency, single-file solutions when appropriate), file structure, data model, key components/functions and how they interact, edge cases. Do not write the full implementation — give developers a precise blueprint.'},
+  developer: {name:'Developer', emoji:'👩‍💻', role:'Writes the complete, working code',
+    system:'You are an expert full-stack developer. Implement the design completely — no placeholders, no TODOs, no "rest of code here". Write clean, commented, working code. Output every file in full. When you receive review feedback, fix every point and output the full updated files again, with a short changelog first.'},
+  reviewer:  {name:'Code Reviewer', emoji:'🔍', role:'Reviews code, approves or requests fixes',
+    system:'You are a meticulous senior code reviewer. Check the code against the requirements: bugs, missing features, broken logic, security, UX and accessibility issues. Be specific (file, function, what to change). Only list issues that matter. If everything required works, reply with a short summary and the word APPROVED on its own line. Otherwise give a numbered list of required changes and do NOT write APPROVED.'},
+  tester:    {name:'QA Tester', emoji:'🧪', role:'Mentally runs the product and finds bugs',
+    system:'You are a QA engineer. Walk through the product step by step as a user would, including edge cases (empty input, huge input, rapid clicks, mobile screens). Report concrete bugs with reproduction steps. If you find no blocking bugs, write APPROVED on its own line.'},
+  designer:  {name:'UI/UX Designer', emoji:'🎨', role:'Designs the look, feel and flows',
+    system:'You are a UI/UX designer. Define the visual design and interaction flows: layout, colour palette (with hex codes), typography, spacing, components, states (hover/empty/error/loading), responsive behaviour and accessibility. Give developers exact, implementable guidance.'},
+  researcher:{name:'Researcher', emoji:'🔬', role:'Gathers facts, options and insights',
+    system:'You are a thorough researcher. Break the topic into key questions, then answer each with facts, data points, examples, competing viewpoints and trade-offs. Flag uncertainty honestly. Finish with key takeaways. You cannot browse the web, so rely on what you know and say when something may be outdated.'},
+  writer:    {name:'Writer', emoji:'✍️', role:'Drafts clear, engaging content',
+    system:'You are a skilled writer. Using the inputs you are given, write the complete piece — engaging, well-structured, with a strong opening and clear flow. Match the requested tone and audience. When you receive editorial feedback, revise and output the full improved piece.'},
+  editor:    {name:'Editor', emoji:'📝', role:'Polishes content, approves or requests revisions',
+    system:'You are a demanding editor. Evaluate the draft for clarity, structure, accuracy, tone, and impact. Give specific, numbered revision requests. If the piece is ready to publish, reply with a brief note and APPROVED on its own line; otherwise do NOT write APPROVED.'},
+  critic:    {name:'Devil\'s Advocate', emoji:'😈', role:'Challenges assumptions and finds risks',
+    system:'You are a sharp devil\'s advocate. Challenge assumptions, spot risks, weaknesses, and blind spots, and propose better alternatives. Be constructive and specific, never vague.'},
+  summarizer:{name:'Synthesizer', emoji:'🧠', role:'Merges everything into a final answer',
+    system:'You combine the team\'s work into one polished, complete final deliverable. Resolve contradictions, keep the best ideas, remove repetition, and present it in a clean, well-formatted structure.'},
+  manager:   {name:'Team Lead', emoji:'👑', role:'Plans, delegates and integrates',
+    system:'You are an experienced team lead. Break the goal into concrete tasks, delegate each to the best-suited team member, review their results critically, request fixes when needed, and finally integrate everything into a complete deliverable.'},
+  marketer:  {name:'Marketer', emoji:'📣', role:'Positioning, messaging and growth',
+    system:'You are a growth marketer. Define the audience, positioning, value proposition, key messages, channels and a launch plan with concrete copy examples.'},
+  gamedesigner:{name:'Game Designer', emoji:'🎮', role:'Designs fun, original game mechanics',
+    system:'You are a creative game designer. Design an ORIGINAL, fun browser game: core loop, controls (keyboard + touch), scoring, difficulty curve, visuals using simple shapes/colours, sounds (optional, Web Audio), win/lose states. Be specific enough for a developer to implement in one HTML file.'},
+  custom:    {name:'New Agent', emoji:'🤖', role:'Describe what this agent does',
+    system:'You are a helpful expert. Describe your specialty here.'},
+};
+
+/* ---------------- Templates ---------------- */
+const TEMPLATES = [
+  {id:'dev', title:'Software Dev Team', emoji:'🧭🏛️👩‍💻🔍', mode:'pipeline',
+   desc:'PM → Architect → Developer ⇄ Reviewer. The reviewer sends work back until it is APPROVED. Great for apps, tools and websites.',
+   goal:'Build a polished single-file HTML/JS to-do app with categories, due dates, dark mode, drag-to-reorder and localStorage persistence.',
+   agents:['pm','architect','developer','reviewer'], links:[[0,1],[1,2],[2,3],[3,2]], opts:{maxLoops:2}},
+  {id:'game', title:'Game Studio', emoji:'🎮👩‍💻🧪', mode:'pipeline',
+   desc:'Game Designer → Developer ⇄ QA Tester. Produces a playable single-file browser game you can preview in Files.',
+   goal:'Create an original, addictive single-file HTML5 canvas arcade game playable with keyboard and touch.',
+   agents:['gamedesigner','developer','tester'], links:[[0,1],[1,2],[2,1]], opts:{maxLoops:2}},
+  {id:'content', title:'Content Studio', emoji:'🔬✍️📝', mode:'pipeline',
+   desc:'Researcher → Writer ⇄ Editor. Blog posts, essays, reports, scripts and newsletters.',
+   goal:'Write a 1,000-word blog post explaining how multi-agent AI teams work, for non-technical readers.',
+   agents:['researcher','writer','editor'], links:[[0,1],[1,2],[2,1]], opts:{maxLoops:2}},
+  {id:'product', title:'Full Product Squad', emoji:'🧭🎨🏛️👩‍💻🧪🔍', mode:'pipeline',
+   desc:'Parallel branches: PM feeds Designer and Architect at the same time; Developer merges both; QA and Reviewer check in parallel.',
+   goal:'Build a single-file HTML budgeting app with charts (canvas), categories, monthly view and CSV export.',
+   agents:['pm','designer','architect','developer','tester','reviewer'],
+   links:[[0,1],[0,2],[1,3],[2,3],[3,4],[3,5],[5,3]], opts:{maxLoops:2}},
+  {id:'brain', title:'Brainstorm Round-table', emoji:'🔬😈📣🧠', mode:'roundtable',
+   desc:'Experts discuss in turns, building on and challenging each other, then a Synthesizer writes the final answer.',
+   goal:'Come up with 5 promising, low-cost startup ideas for students and pick the best one.',
+   agents:['researcher','critic','marketer','summarizer'], links:[], opts:{rounds:2, synthIdx:3}},
+  {id:'manager', title:'Manager-led Team', emoji:'👑🏛️👩‍💻🎨📣', mode:'manager',
+   desc:'A Team Lead plans the work, delegates tasks to specialists (in parallel), reviews results and assembles the final product.',
+   goal:'Create a landing page (single HTML file) for a fictional eco-friendly coffee brand, plus launch copy for social media.',
+   agents:['manager','architect','developer','designer','marketer'], links:[], opts:{managerIdx:0, managerRounds:4}},
+];
+
+/* ---------------- State ---------------- */
+const LS_KEY = 'aiteam.studio.v1';
+function defaultState(){
+  return {
+    providers:{
+      anthropic:{key:''}, openai:{key:'', base:PROVIDERS.openai.base}, gemini:{key:''},
+      openrouter:{key:'', base:PROVIDERS.openrouter.base}, groq:{key:'', base:PROVIDERS.groq.base},
+      ollama:{key:'', base:PROVIDERS.ollama.base}, custom:{key:'', base:''},
+    },
+    modelCache:{},
+    defaults:{provider:'mock', model:'demo'},
+    settings:{maxTokens:8000, maxChars:24000, fallback:true, autoFiles:true, theme:'auto'},
+    team:null, saved:{},
+    project:{goal:'', context:'', feedback:''},
+    run:{log:[], files:{}, final:'', usage:{}, title:''},
+    view:{x:40, y:40, z:1}, tab:'team', seenGuide:false,
+  };
+}
+let S = load();
+const T = () => S.team;
+const agentById = id => T().agents.find(a => a.id === id);
+function load(){
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch(e) {}
+  const d = defaultState();
+  if (!s) return d;
+  // merge to tolerate older saves
+  for (const k of Object.keys(d)) if (s[k] === undefined) s[k] = d[k];
+  for (const k of Object.keys(d.providers)) if (!s.providers[k]) s.providers[k] = d.providers[k];
+  for (const k of Object.keys(d.settings)) if (s.settings[k] === undefined) s.settings[k] = d.settings[k];
+  return s;
+}
+let saveTimer = null;
+function save(now){
+  clearTimeout(saveTimer);
+  const doSave = () => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+    catch(e){
+      // storage full: trim the run log and retry
+      try { S.run.log = S.run.log.slice(-20); localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+      catch(e2){ console.warn('Could not save', e2); }
+    }
+  };
+  if (now) doSave(); else saveTimer = setTimeout(doSave, 300);
+}
+
+function makeAgent(presetKey, x, y){
+  const p = PRESETS[presetKey] || PRESETS.custom;
+  return {id:uid(), preset:presetKey, name:p.name, emoji:p.emoji, role:p.role, system:p.system,
+          provider:S.defaults.provider, model:S.defaults.model, maxTokens:'', temperature:'', effort:'',
+          x:x ?? 80, y:y ?? 80};
+}
+function teamFromTemplate(t){
+  const agents = t.agents.map((k, i) => makeAgent(k, 0, 0));
+  const links = t.links.map(([a, b]) => ({id:uid(), from:agents[a].id, to:agents[b].id}));
+  const opts = {maxLoops:2, keyword:'APPROVED', rounds:2, synthId:'', managerId:'', managerRounds:4, parallel:true};
+  if (t.opts.maxLoops != null) opts.maxLoops = t.opts.maxLoops;
+  if (t.opts.rounds != null) opts.rounds = t.opts.rounds;
+  if (t.opts.synthIdx != null) opts.synthId = agents[t.opts.synthIdx].id;
+  if (t.opts.managerIdx != null) opts.managerId = agents[t.opts.managerIdx].id;
+  if (t.opts.managerRounds != null) opts.managerRounds = t.opts.managerRounds;
+  const team = {id:uid(), name:t.title, mode:t.mode, agents, links, opts};
+  autoLayoutTeam(team);
+  return team;
+}
+function blankTeam(){
+  return {id:uid(), name:'My AI Team', mode:'pipeline', agents:[], links:[],
+          opts:{maxLoops:2, keyword:'APPROVED', rounds:2, synthId:'', managerId:'', managerRounds:4, parallel:true}};
+}
+if (!S.team) { S.team = teamFromTemplate(TEMPLATES[0]); if (!S.project.goal) S.project.goal = TEMPLATES[0].goal; }
+
+
+/* ---------------- Utilities ---------------- */
+function toast(msg, ms=2200){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+function applyTheme(){
+  const th = S.settings.theme;
+  if (th === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', th);
+}
+function truncate(s, n){ s = s || ''; return s.length > n ? s.slice(0, n) + `\n\n…[truncated ${s.length - n} characters]` : s; }
+function fmtNum(n){ return n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n); }
+function b64FromBytes(bytes){ let s=''; const ch=0x8000; for (let i=0;i<bytes.length;i+=ch) s += String.fromCharCode.apply(null, bytes.subarray(i,i+ch)); return btoa(s); }
+function saveFile(name, data, mime='text/plain'){
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  if (window.AndroidBridge && AndroidBridge.saveFile){
+    try { AndroidBridge.saveFile(name, b64FromBytes(bytes), mime); return; } catch(e){ console.warn(e); }
+  }
+  const blob = new Blob([bytes], {type:mime});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); toast('Copied'); }
+  catch(e){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }
+}
+
+/* ---------------- Markdown ---------------- */
+function md(src){
+  src = String(src || '');
+  const blocks = [];
+  // fenced code
+  src = src.replace(/```([^\n`]*)\n([\s\S]*?)(?:```|$)/g, (m, info, code) => {
+    blocks.push({info:info.trim(), code:code.replace(/\n$/, '')});
+    return `\u0000B${blocks.length-1}\u0000`;
+  });
+  let h = esc(src);
+  const inline = s => s
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const lines = h.split('\n'); const out = []; let list = null, para = [];
+  const flushP = () => { if (para.length){ out.push('<p>' + inline(para.join('<br>')) + '</p>'); para = []; } };
+  const flushL = () => { if (list){ out.push(`<${list.t}>` + list.items.map(i => '<li>' + inline(i) + '</li>').join('') + `</${list.t}>`); list = null; } };
+  for (let i = 0; i < lines.length; i++){
+    const ln = lines[i]; let m;
+    if (/^\u0000B\d+\u0000$/.test(ln.trim())){ flushP(); flushL(); out.push(ln.trim()); continue; }
+    if ((m = ln.match(/^(#{1,6})\s+(.*)$/))){ flushP(); flushL(); const n = Math.min(m[1].length+1, 4); out.push(`<h${n}>${inline(m[2])}</h${n}>`); continue; }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(ln)){ flushP(); flushL(); out.push('<hr>'); continue; }
+    if ((m = ln.match(/^&gt;\s?(.*)$/))){ flushP(); flushL(); out.push('<blockquote>' + inline(m[1]) + '</blockquote>'); continue; }
+    if (/^\|.*\|\s*$/.test(ln) && i+1 < lines.length && /^\|?\s*:?-{2,}/.test(lines[i+1])){
+      flushP(); flushL();
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => inline(c.trim()));
+      let t = '<table><tr>' + cells(ln).map(c => `<th>${c}</th>`).join('') + '</tr>'; i++;
+      while (i+1 < lines.length && /^\|.*\|\s*$/.test(lines[i+1])){ i++; t += '<tr>' + cells(lines[i]).map(c => `<td>${c}</td>`).join('') + '</tr>'; }
+      out.push(t + '</table>'); continue;
+    }
+    if ((m = ln.match(/^\s*([-*+]|\d+[.)])\s+(.*)$/))){
+      flushP(); const t = /\d/.test(m[1]) ? 'ol' : 'ul';
+      if (!list || list.t !== t){ flushL(); list = {t, items:[]}; }
+      list.items.push(m[2]); continue;
+    }
+    if (!ln.trim()){ flushP(); flushL(); continue; }
+    flushL(); para.push(ln);
+  }
+  flushP(); flushL();
+  h = out.join('\n');
+  return h.replace(/\u0000B(\d+)\u0000/g, (m, i) => {
+    const b = blocks[+i];
+    return `<div class="codebox"><div class="cbh"><span>${esc(b.info || 'code')}</span><button data-copy="${i}">Copy</button></div><pre>${esc(b.code)}</pre></div>`;
+  });
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.codebox .cbh button');
+  if (b){ copyText(b.closest('.codebox').querySelector('pre').textContent); }
+});
+
+/* ---------------- LLM calls ---------------- */
+class APIError extends Error { constructor(msg, status){ super(msg); this.status = status; } }
+
+async function* sseLines(resp, signal){
+  const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = '';
+  while (true){
+    if (signal && signal.aborted) { try{ reader.cancel(); }catch(e){} throw new DOMException('Aborted','AbortError'); }
+    const {done, value} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream:true});
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0){
+      const line = buf.slice(0, idx).replace(/\r$/, ''); buf = buf.slice(idx+1);
+      if (line.startsWith('data:')) yield line.slice(5).trim();
+    }
+  }
+  if (buf.startsWith('data:')) yield buf.slice(5).trim();
+}
+
+async function readError(resp){
+  let t = ''; try { t = await resp.text(); } catch(e){}
+  let msg = t;
+  try { const j = JSON.parse(t); msg = j.error?.message || j.message || j.error || t; if (typeof msg !== 'string') msg = JSON.stringify(msg); } catch(e){}
+  return new APIError(`HTTP ${resp.status}: ${String(msg).slice(0, 400)}`, resp.status);
+}
+
+function providerConf(pid){
+  const P = PROVIDERS[pid] || PROVIDERS.mock;
+  const c = S.providers[pid] || {};
+  return {P, key:(c.key || '').trim(), base:((c.base || P.base || '').trim()).replace(/\/+$/, '')};
+}
+
+/**
+ * callLLM: stream a reply. messages = [{role:'user'|'assistant', content}]
+ * onDelta(textSoFar) is called as text streams in. Returns {text, usage:{in,out}, stop}.
+ */
+async function callLLM(agent, system, messages, onDelta, signal, mockOpts={}){
+  const pid = agent.provider || 'mock';
+  const {P, key, base} = providerConf(pid);
+  const model = (agent.model || '').trim();
+  if (P.kind !== 'mock' && !model) throw new APIError(`Agent "${agent.name}" has no model set. Open it and choose a model.`);
+  if (!P.noKey && !key) throw new APIError(`No API key for ${P.label}. Add it in Settings.`);
+  const maxTokens = +agent.maxTokens || +S.settings.maxTokens || 8000;
+
+  let attempt = 0;
+  while (true){
+    try {
+      if (P.kind === 'mock') return await mockLLM(agent, system, messages, onDelta, signal, mockOpts);
+      if (P.kind === 'anthropic') return await callAnthropic({key, model, system, messages, maxTokens, agent, onDelta, signal});
+      if (P.kind === 'gemini') return await callGemini({key, model, system, messages, maxTokens, agent, onDelta, signal});
+      return await callOpenAI({pid, key, base, model, system, messages, maxTokens, agent, onDelta, signal});
+    } catch(e){
+      if (e.name === 'AbortError') throw e;
+      const retriable = e.status === 429 || e.status === 529 || (e.status >= 500) || (e instanceof TypeError && !signal?.aborted && attempt === 0);
+      if (retriable && attempt < 3){
+        attempt++; const wait = 1500 * Math.pow(2, attempt);
+        onDelta && onDelta(null, `Retrying in ${wait/1000}s (${e.message})…`);
+        await sleep(wait); continue;
+      }
+      if (e instanceof TypeError) throw new APIError(`Network/CORS error calling ${P.label}: ${e.message}. Check the base URL, your connection, and (for Ollama/local servers) that browser access is allowed.`);
+      throw e;
+    }
+  }
+}
+
+async function callAnthropic({key, model, system, messages, maxTokens, agent, onDelta, signal}, noFallback){
+  const body = {model, max_tokens:maxTokens, system, messages, stream:true};
+  if (agent.effort) body.output_config = {effort:agent.effort};
+  const headers = {'content-type':'application/json', 'x-api-key':key, 'anthropic-version':'2023-06-01',
+                   'anthropic-dangerous-direct-browser-access':'true'};
+  const useFallback = S.settings.fallback && !noFallback && /^claude-(opus-5|sonnet-5-5|fable-5)/.test(model);
+  if (useFallback){ headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; body.fallbacks = 'default'; }
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {method:'POST', headers, body:JSON.stringify(body), signal});
+  if (!resp.ok){
+    const err = await readError(resp);
+    if (useFallback && resp.status === 400 && /fallback|beta/i.test(err.message))
+      return callAnthropic({key, model, system, messages, maxTokens, agent, onDelta, signal}, true);
+    throw err;
+  }
+  let text = '', usage = {in:0, out:0}, stop = '';
+  for await (const data of sseLines(resp, signal)){
+    if (!data) continue;
+    let ev; try { ev = JSON.parse(data); } catch(e){ continue; }
+    if (ev.type === 'message_start' && ev.message?.usage) usage.in = (ev.message.usage.input_tokens||0) + (ev.message.usage.cache_read_input_tokens||0);
+    else if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta'){ text += ev.delta.text; onDelta && onDelta(text); }
+    else if (ev.type === 'message_delta'){ if (ev.usage?.output_tokens) usage.out = ev.usage.output_tokens; if (ev.delta?.stop_reason) stop = ev.delta.stop_reason; }
+    else if (ev.type === 'error') throw new APIError(ev.error?.message || 'Stream error', ev.error?.type === 'overloaded_error' ? 529 : 500);
+  }
+  if (stop === 'refusal' && !text.trim()) throw new APIError('The model declined this request (refusal). Try rephrasing the goal or using a different model.');
+  if (stop === 'max_tokens') text += '\n\n_[Output hit the max token limit — raise “Max output tokens” for this agent.]_';
+  return {text, usage, stop};
+}
+
+async function callOpenAI({pid, key, base, model, system, messages, maxTokens, agent, onDelta, signal}){
+  if (!base) throw new APIError('No base URL set for this provider (Settings).');
+  const body = {model, stream:true, messages:[{role:'system', content:system}, ...messages]};
+  if (agent.temperature !== '' && agent.temperature != null) body.temperature = +agent.temperature;
+  if (agent.maxTokens) body.max_tokens = +agent.maxTokens;
+  const headers = {'content-type':'application/json'};
+  if (key) headers.authorization = 'Bearer ' + key;
+  if (pid === 'openrouter'){ headers['X-Title'] = 'AI Team Studio'; }
+  const resp = await fetch(base + '/chat/completions', {method:'POST', headers, body:JSON.stringify(body), signal});
+  if (!resp.ok) throw await readError(resp);
+  let text = '', usage = {in:0, out:0}, stop = '';
+  for await (const data of sseLines(resp, signal)){
+    if (!data || data === '[DONE]') continue;
+    let ev; try { ev = JSON.parse(data); } catch(e){ continue; }
+    if (ev.error) throw new APIError(ev.error.message || JSON.stringify(ev.error));
+    const d = ev.choices?.[0]?.delta?.content;
+    if (d){ text += d; onDelta && onDelta(text); }
+    if (ev.choices?.[0]?.finish_reason) stop = ev.choices[0].finish_reason;
+    if (ev.usage){ usage.in = ev.usage.prompt_tokens || 0; usage.out = ev.usage.completion_tokens || 0; }
+  }
+  if (!usage.out) usage.out = Math.round(text.length / 4);
+  if (stop === 'length') text += '\n\n_[Output hit the token limit — raise “Max output tokens” for this agent.]_';
+  return {text, usage, stop};
+}
+
+async function callGemini({key, model, system, messages, maxTokens, agent, onDelta, signal}){
+  const m = model.replace(/^models\//, '');
+  const body = {
+    systemInstruction:{parts:[{text:system}]},
+    contents:messages.map(x => ({role:x.role === 'assistant' ? 'model' : 'user', parts:[{text:x.content}]})),
+    generationConfig:{maxOutputTokens:maxTokens},
+  };
+  if (agent.temperature !== '' && agent.temperature != null) body.generationConfig.temperature = +agent.temperature;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:streamGenerateContent?alt=sse`;
+  const resp = await fetch(url, {method:'POST', headers:{'content-type':'application/json', 'x-goog-api-key':key}, body:JSON.stringify(body), signal});
+  if (!resp.ok) throw await readError(resp);
+  let text = '', usage = {in:0, out:0}, stop = '';
+  for await (const data of sseLines(resp, signal)){
+    let ev; try { ev = JSON.parse(data); } catch(e){ continue; }
+    const parts = ev.candidates?.[0]?.content?.parts || [];
+    for (const p of parts) if (p.text && !p.thought){ text += p.text; }
+    onDelta && onDelta(text);
+    if (ev.candidates?.[0]?.finishReason) stop = ev.candidates[0].finishReason;
+    if (ev.usageMetadata){ usage.in = ev.usageMetadata.promptTokenCount || 0; usage.out = ev.usageMetadata.candidatesTokenCount || 0; }
+  }
+  if (!text && stop && stop !== 'STOP') throw new APIError('Gemini returned no text (finish reason: ' + stop + ').');
+  return {text, usage, stop};
+}
+
+async function fetchModels(pid){
+  const {P, key, base} = providerConf(pid);
+  let list = [];
+  if (P.kind === 'mock') return ['demo'];
+  if (P.kind === 'anthropic'){
+    const r = await fetch('https://api.anthropic.com/v1/models?limit=100', {headers:{'x-api-key':key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true'}});
+    if (!r.ok) throw await readError(r);
+    list = (await r.json()).data.map(m => m.id);
+  } else if (P.kind === 'gemini'){
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {headers:{'x-goog-api-key':key}});
+    if (!r.ok) throw await readError(r);
+    list = (await r.json()).models.filter(m => (m.supportedGenerationMethods||[]).includes('generateContent')).map(m => m.name.replace(/^models\//,''));
+  } else {
+    const headers = key ? {authorization:'Bearer ' + key} : {};
+    const r = await fetch(base + '/models', {headers});
+    if (!r.ok) throw await readError(r);
+    list = ((await r.json()).data || []).map(m => m.id);
+  }
+  list.sort();
+  S.modelCache[pid] = list; save();
+  return list;
+}
+function modelsFor(pid){
+  const P = PROVIDERS[pid] || PROVIDERS.mock;
+  return Array.from(new Set([...(P.models || []), ...(S.modelCache[pid] || [])]));
+}
+
+/* ---------------- Demo (mock) provider ---------------- */
+async function mockLLM(agent, system, messages, onDelta, signal, o){
+  const last = messages[messages.length-1].content;
+  const who = (agent.name + ' ' + agent.role + ' ' + (agent.preset||'')).toLowerCase();
+  const goal = (S.project.goal || 'the project').split('\n')[0].slice(0, 120);
+  let out;
+  if (o.kind === 'manager'){
+    const turn = messages.filter(m => m.role === 'assistant').length;
+    if (turn === 0){
+      const tasks = (o.members || []).map(m => ({to:m.name, task:`As ${m.role.toLowerCase()}, handle your part of: ${goal}`}));
+      out = `Here is my plan.\n\n${FENCE}json\n${JSON.stringify({thoughts:'Split the goal by specialty and run in parallel.', assignments:tasks, done:false}, null, 2)}\n${FENCE}`;
+    } else {
+      out = `FINAL ANSWER\n\n# Final deliverable\n\nThe team completed **${goal}**.\n\n## What each member delivered\n${(o.members||[]).map(m => `- **${m.name}** — ${m.role}`).join('\n')}\n\n## Integrated result\nAll parts were reviewed and combined. See the Files tab for generated files.\n\n_(Demo mode — connect a real AI provider in Settings for real output.)_`;
+    }
+  } else if (o.kind === 'roundtable'){
+    const ideas = ['focus on the smallest version that delivers real value', 'validate with 5 real users before building more', 'the main risk is distribution, not technology', 'we should measure one clear success metric', 'combine the two strongest ideas so far'];
+    out = `**${agent.name} (round ${o.round || 1}):** Building on the discussion, I think we should ${ideas[Math.floor(Math.random()*ideas.length)]}.\n\n- Key point from my perspective as ${agent.role.toLowerCase()}\n- A risk others may have missed\n- A concrete next step\n\n${(o.round||1) >= 2 ? 'AGREED' : ''}`;
+  } else if (o.kind === 'synth'){
+    out = `# Final answer\n\nAfter discussion, the team recommends:\n\n1. **Idea one** — the strongest option overall\n2. **Idea two** — cheaper but slower\n3. **Idea three** — risky but high upside\n\n**Recommendation:** go with idea one, and validate it this week.\n\n_(Demo mode output.)_`;
+  } else if (/review|test|qa|editor|critic/.test(who)){
+    if ((o.pass || 0) >= 1) out = `Re-checked the revised version against the requirements.\n\n- All previously reported issues are fixed\n- No new blocking problems found\n\nAPPROVED`;
+    else out = `Review of the current version:\n\n1. Missing empty-state message when the list is empty.\n2. Buttons need visible keyboard focus styles.\n3. Data is not saved after reordering.\n\nNEEDS CHANGES — please fix the items above.`;
+  } else if (/develop|engineer|coder|programmer/.test(who)){
+    const rev = /Feedback you must address/.test(last);
+    out = `${rev ? '**Changelog:** fixed empty state, focus styles and persistence after reorder.\n\n' : ''}Here is the complete implementation.\n\nFile: index.html\n${FENCE}html\n<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>Demo App</title>\n<link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <main>\n    <h1>Demo App</h1>\n    <p>Built by your AI team (demo mode).</p>\n    <button id="b">Click me</button>\n    <p id="out" aria-live="polite">${rev ? 'No clicks yet — try it!' : ''}</p>\n  </main>\n  <script src="app.js"></`+`script>\n</body>\n</html>\n${FENCE}\n\nFile: style.css\n${FENCE}css\nbody{font-family:system-ui;background:#0f1117;color:#e7e9f0;display:grid;place-items:center;min-height:100vh;margin:0}\nbutton{padding:10px 18px;border-radius:10px;border:0;background:#7c6cff;color:#fff;font-size:16px}\nbutton:focus-visible{outline:3px solid #22c3a6}\n${FENCE}\n\nFile: app.js\n${FENCE}js\nlet n = 0;\ndocument.getElementById('b').onclick = () => {\n  n++;\n  document.getElementById('out').textContent = 'Clicked ' + n + ' time' + (n === 1 ? '' : 's');\n};\n${FENCE}`;
+  } else {
+    out = `## ${agent.role}\n\nFor **${goal}**, here is my contribution:\n\n### Key points\n- Clear scope: start with a minimal, working core\n- Users: people who want this to be simple and fast\n- Must-haves: the 3–5 features that matter most\n\n### Decisions\n| Topic | Decision |\n|---|---|\n| Format | Single file, no dependencies |\n| Storage | Local storage |\n\n_(Demo mode — add an API key in Settings for real AI output.)_`;
+  }
+  let text = '';
+  const parts = out.split(/(\s+)/);
+  for (let i = 0; i < parts.length; i++){
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    text += parts[i];
+    if (i % 3 === 0){ onDelta && onDelta(text); await sleep(12); }
+  }
+  onDelta && onDelta(text);
+  return {text, usage:{in:Math.round((system.length + JSON.stringify(messages).length)/4), out:Math.round(text.length/4)}, stop:'end_turn'};
+}
+
+/* ---------------- Files workspace ---------------- */
+function extractFiles(text, by){
+  const found = [];
+  const re = /```([^\n`]*)\n([\s\S]*?)```/g; let m;
+  while ((m = re.exec(text))){
+    const info = m[1].trim(); const code = m[2].replace(/\n$/, '');
+    let name = null;
+    // filename in info string: ```js title="a.js"  |  ```js:path/a.js  |  ```path/a.js
+    let mm = info.match(/(?:title|file|filename|path)\s*=\s*["']?([^"'\s]+)/i) || info.match(/^[\w+-]+:(\S+)$/) || info.match(/^(?:[\w+-]+\s+)?([\w./-]+\.[A-Za-z0-9]{1,6})$/);
+    if (mm) name = mm[1];
+    if (!name){
+      // look at the 3 lines above for "File: x"
+      const before = text.slice(Math.max(0, m.index - 300), m.index).split('\n').filter(l => l.trim()).slice(-2);
+      for (let i = before.length-1; i >= 0 && !name; i--){
+        const l = before[i].replace(/[*_`#>]/g, '').trim();
+        const f = l.match(/^(?:file(?:name)?|path)\s*[:\-–]\s*(\S+)/i) || l.match(/^([\w./-]+\.[A-Za-z0-9]{1,6})\s*:?\s*$/);
+        if (f) name = f[1];
+      }
+    }
+    if (name){ name = name.replace(/^\.?\/+/, '').replace(/[),.:;]+$/, ''); if (name && !/\.\./.test(name)) found.push({name, code}); }
+  }
+  if (S.settings.autoFiles){
+    for (const f of found){
+      const prev = S.run.files[f.name];
+      S.run.files[f.name] = {content:f.code, by, ts:Date.now(), v:(prev ? prev.v + 1 : 1)};
+    }
+    if (found.length) { renderFiles(); save(); }
+  }
+  return found;
+}
+
+/* ---------------- Orchestration ---------------- */
+let RUN = null; // {abort, status:{}, activeLinks:Set}
+const nodeStatus = {};
+
+function teamRoster(exceptId){
+  return T().agents.filter(a => a.id !== exceptId).map(a => `- ${a.name}: ${a.role}`).join('\n') || '- (no teammates)';
+}
+function baseSystem(agent, extra=''){
+  return `${agent.system}
+
+---
+TEAM CONTEXT
+You are "${agent.name}" (${agent.role}), one member of a collaborative multi-agent AI team.
+Your teammates:
+${teamRoster(agent.id)}
+${extra}
+TEAM RULES
+- Focus on your own specialty and do it thoroughly; build on teammates' work instead of repeating it.
+- When you create or change a file, write a line "File: path/filename.ext" directly above its fenced code block, and always output the COMPLETE file (never partial snippets or "unchanged" placeholders).
+- Keep prose tight; put the effort into the deliverable.`;
+}
+function projectHeader(){
+  let s = `# Project goal\n${S.project.goal.trim()}\n`;
+  if (S.project.context.trim()) s += `\n# Extra context & requirements\n${S.project.context.trim()}\n`;
+  if (RUN && RUN.prior) s += `\n# Result of the previous iteration\n${truncate(RUN.prior.final, S.settings.maxChars)}\n\n# Client feedback for this iteration (highest priority)\n${RUN.prior.feedback}\n`;
+  return s;
+}
+function fileListNote(){
+  const names = Object.keys(S.run.files);
+  return names.length ? `\n# Files currently in the shared workspace\n${names.map(n => '- ' + n).join('\n')}\n` : '';
+}
+
+function logPush(entry){
+  entry.id = entry.id || uid(); entry.ts = entry.ts || Date.now();
+  S.run.log.push(entry); renderLogEntry(entry, true); return entry;
+}
+function setNode(id, st){ nodeStatus[id] = st; const el = document.querySelector(`.node[data-id="${id}"]`); if (el){ el.classList.remove('running','done','error','waiting'); if (st) el.classList.add(st); } }
+function setActiveLinks(toId, on){
+  if (!RUN) return;
+  T().links.filter(l => l.to === toId).forEach(l => on ? RUN.activeLinks.add(l.id) : RUN.activeLinks.delete(l.id));
+  drawLinks();
+}
+
+async function agentTurn(agent, system, messages, meta={}){
+  if (RUN.abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  const entry = logPush({type:'agent', agentId:agent.id, name:agent.name, emoji:agent.emoji, role:agent.role,
+                         label:meta.label || '', text:'', status:'running', model:`${agent.provider}/${agent.model}`});
+  setNode(agent.id, 'running'); setActiveLinks(agent.id, true);
+  const t0 = Date.now();
+  let lastPaint = 0;
+  try {
+    const res = await callLLM(agent, system, messages, (txt, note) => {
+      if (note){ entry.note = note; updateLogEntry(entry); return; }
+      entry.text = txt; entry.note = '';
+      const now = performance.now(); if (now - lastPaint > 80){ lastPaint = now; updateLogEntry(entry, true); }
+    }, RUN.abort.signal, meta.mock || {});
+    entry.text = res.text; entry.status = 'done'; entry.ms = Date.now() - t0; entry.usage = res.usage;
+    if (meta.verdict) entry.verdict = isApproved(res.text) ? 'approved' : 'changes';
+    const u = S.run.usage[agent.id] || {in:0, out:0, calls:0};
+    u.in += res.usage.in || 0; u.out += res.usage.out || 0; u.calls++; S.run.usage[agent.id] = u;
+    updateLogEntry(entry); setNode(agent.id, 'done'); renderStats();
+    entry.files = extractFiles(res.text, agent.name).map(f => f.name);
+    if (entry.files.length) updateLogEntry(entry);
+    save();
+    return res.text;
+  } catch(e){
+    entry.status = e.name === 'AbortError' ? 'stopped' : 'error';
+    entry.error = e.name === 'AbortError' ? 'Stopped' : e.message;
+    updateLogEntry(entry); setNode(agent.id, 'error'); save();
+    throw e;
+  } finally { setActiveLinks(agent.id, false); }
+}
+function isApproved(text){
+  const kw = (T().opts.keyword || 'APPROVED').trim();
+  const re = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  const neg = new RegExp(`\\b(NOT|NO|UN)[\\s-]*${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  return re.test(text) && !neg.test(text);
+}
+function sysNote(text, cls=''){ return logPush({type:'sys', text, cls}); }
+
+/* ---- analyse graph: forward DAG + loop (back) edges ---- */
+function analyseGraph(team){
+  const ids = team.agents.map(a => a.id);
+  const out = id => team.links.filter(l => l.from === id && ids.includes(l.to));
+  const color = {}; const back = new Set();
+  const hasIn = id => team.links.some(l => l.to === id && l.from !== id);
+  const roots = ids.filter(id => !hasIn(id)).sort((a,b) => agentById(a).x - agentById(b).x);
+  const dfs = u => { color[u] = 1; for (const l of out(u)){ if (color[l.to] === 1) back.add(l.id); else if (!color[l.to]) dfs(l.to); } color[u] = 2; };
+  roots.forEach(r => { if (!color[r]) dfs(r); });
+  // remaining (pure cycles): start from left-most
+  ids.slice().sort((a,b) => agentById(a).x - agentById(b).x).forEach(id => { if (!color[id]) dfs(id); });
+  const fwd = team.links.filter(l => !back.has(l.id) && ids.includes(l.from) && ids.includes(l.to));
+  const level = {}; ids.forEach(id => level[id] = 0);
+  // longest path levels (ids count is small; simple relaxation)
+  for (let k = 0; k < ids.length; k++) for (const l of fwd) level[l.to] = Math.max(level[l.to], level[l.from] + 1);
+  const maxLevel = Math.max(0, ...Object.values(level));
+  return {fwd, back, level, maxLevel};
+}
+function descendants(start, fwd){
+  const set = new Set([start]); const st = [start];
+  while (st.length){ const u = st.pop(); for (const l of fwd) if (l.from === u && !set.has(l.to)){ set.add(l.to); st.push(l.to); } }
+  return set;
+}
+
+async function runPipeline(){
+  const team = T();
+  const {fwd, back, level, maxLevel} = analyseGraph(team);
+  const backLinks = team.links.filter(l => back.has(l.id));
+  const maxChars = +S.settings.maxChars || 24000;
+  const outputs = {}; let feedback = {}; let pass = 0;
+  let toRun = new Set(team.agents.map(a => a.id));
+  if (!team.links.length && team.agents.length > 1) sysNote('No links between agents, so each works independently. Link agents on the Team tab to pass work between them.');
+  while (true){
+    for (let lv = 0; lv <= maxLevel; lv++){
+      const group = team.agents.filter(a => level[a.id] === lv && toRun.has(a.id)).sort((a,b) => a.y - b.y);
+      if (!group.length) continue;
+      group.forEach(a => setNode(a.id, 'waiting'));
+      const runOne = async a => {
+        const ins = fwd.filter(l => l.to === a.id && outputs[l.from]).map(l => agentById(l.from));
+        const outsTo = fwd.filter(l => l.from === a.id).map(l => agentById(l.to).name);
+        const reviews = backLinks.filter(l => l.from === a.id).map(l => agentById(l.to).name);
+        const fb = feedback[a.id] || [];
+        let extra = '';
+        if (ins.length) extra += `In this workflow you receive work from: ${ins.map(x => x.name).join(', ')}.\n`;
+        if (outsTo.length) extra += `Your output is passed on to: ${outsTo.join(', ')}.\n`;
+        if (reviews.length) extra += `You are the quality gate for ${reviews.join(', ')}: if the work fully meets the goal, include the word ${team.opts.keyword} on its own line; otherwise list the required changes and do NOT write that word.\n`;
+        let user = projectHeader();
+        if (ins.length){
+          user += `\n# Input from your teammates\n`;
+          for (const x of ins) user += `\n## From ${x.name} (${x.role})\n${truncate(outputs[x.id], maxChars)}\n`;
+        }
+        if (fb.length){
+          user += `\n# Feedback you must address\n`;
+          for (const f of fb) user += `\n## From ${f.from}\n${truncate(f.text, maxChars)}\n`;
+          if (outputs[a.id]) user += `\n# Your previous version (revise it — output the complete updated result)\n${truncate(outputs[a.id], maxChars)}\n`;
+        }
+        if (pass > 0 && reviews.length) user += `\n(This is review round ${pass + 1}. Check whether earlier issues were fixed.)\n`;
+        user += fileListNote();
+        user += `\n# Your task\nDo your part as ${a.role}.` + (reviews.length ? ` End with ${team.opts.keyword} only if no further changes are needed.` : '');
+        const label = fb.length ? `revision ${pass}` : (pass > 0 ? `round ${pass + 1}` : '');
+        const text = await agentTurn(a, baseSystem(a, extra), [{role:'user', content:user}], {label, verdict:reviews.length > 0, mock:{kind:'pipeline', pass}});
+        outputs[a.id] = text;
+      };
+      if (team.opts.parallel !== false && group.length > 1) await Promise.all(group.map(runOne));
+      else for (const a of group) await runOne(a);
+    }
+    // check loops
+    const failing = backLinks.filter(l => toRun.has(l.from) && outputs[l.from] && !isApproved(outputs[l.from]));
+    if (!failing.length){ if (backLinks.length) sysNote(`✅ All quality gates passed (${team.opts.keyword}).`, 'ok'); break; }
+    if (pass >= (+team.opts.maxLoops || 0)){ sysNote(`⚠️ Reached the maximum of ${team.opts.maxLoops} feedback loop(s) without full approval. Raise “loops” on the Team tab or continue with feedback.`, 'warn'); break; }
+    pass++;
+    feedback = {}; toRun = new Set();
+    for (const l of failing){
+      (feedback[l.to] = feedback[l.to] || []).push({from:agentById(l.from).name, text:outputs[l.from]});
+      descendants(l.to, fwd).forEach(id => toRun.add(id));
+    }
+    sysNote(`🔁 Feedback loop ${pass}/${team.opts.maxLoops}: ${failing.map(l => `${agentById(l.from).name} → ${agentById(l.to).name}`).join(', ')}`);
+  }
+  // final deliverable: back-edge targets (the producers) + sinks
+  const sinks = team.agents.filter(a => !fwd.some(l => l.from === a.id));
+  const producers = backLinks.map(l => agentById(l.to));
+  const finalAgents = Array.from(new Set([...producers, ...sinks])).filter(a => outputs[a.id]).sort((a,b) => level[a.id] - level[b.id]);
+  return finalAgents.map(a => finalAgents.length > 1 ? `## ${a.emoji} ${a.name}\n\n${outputs[a.id]}` : outputs[a.id]).join('\n\n---\n\n');
+}
+
+async function runRoundtable(){
+  const team = T(); const o = team.opts;
+  const synth = agentById(o.synthId);
+  const speakers = team.agents.filter(a => !synth || a.id !== synth.id).sort((a,b) => (a.y - b.y) || (a.x - b.x));
+  if (!speakers.length) throw new Error('Add at least one discussion member.');
+  const transcript = [];
+  const rounds = Math.max(1, +o.rounds || 1);
+  for (let r = 1; r <= rounds; r++){
+    sysNote(`💬 Round ${r} of ${rounds}`);
+    let agreedAll = true;
+    for (const a of speakers){
+      const disc = transcript.length ? transcript.map(t => `### ${t.name} (${t.role})\n${truncate(t.text, 6000)}`).join('\n\n') : '(You speak first.)';
+      const user = `${projectHeader()}\n# Discussion so far\n${disc}\n\n# Your turn — round ${r} of ${rounds}\nContribute from your perspective as ${a.role}. Build on, refine, or challenge specific points others made (mention them by name). Add new value; don't repeat. ${r === rounds ? 'This is the last round: converge toward concrete conclusions.' : ''} If you fully agree the team has reached a strong answer, end with the word AGREED.`;
+      const text = await agentTurn(a, baseSystem(a, 'This is a round-table discussion; everyone sees the full conversation.\n'), [{role:'user', content:user}], {label:`round ${r}`, mock:{kind:'roundtable', round:r}});
+      transcript.push({name:a.name, role:a.role, text});
+      if (!/\bAGREED\b/.test(text)) agreedAll = false;
+    }
+    if (agreedAll && r < rounds){ sysNote('🤝 Everyone agreed — ending discussion early.', 'ok'); break; }
+  }
+  const disc = transcript.map(t => `### ${t.name} (${t.role})\n${t.text}`).join('\n\n');
+  if (synth){
+    const user = `${projectHeader()}\n# Full team discussion\n${truncate(disc, (+S.settings.maxChars||24000) * 2)}\n\n# Your task\nWrite the final, complete deliverable for the project goal, combining the best of the discussion.`;
+    return await agentTurn(synth, baseSystem(synth, 'You synthesize the round-table discussion into the final deliverable.\n'), [{role:'user', content:user}], {label:'final synthesis', mock:{kind:'synth'}});
+  }
+  return disc;
+}
+
+function parseManager(text){
+  const fin = text.match(/(?:^|\n)\s*\**FINAL ANSWER\**:?\s*\n?([\s\S]*)$/i);
+  let json = null;
+  const blocks = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)].map(m => m[1]);
+  for (const b of blocks){ try { json = JSON.parse(b); break; } catch(e){} }
+  if (!json){ const a = text.indexOf('{'), b = text.lastIndexOf('}'); if (a >= 0 && b > a){ try { json = JSON.parse(text.slice(a, b+1)); } catch(e){} } }
+  if (fin && (!json || !json.assignments?.length)) return {final:fin[1].trim()};
+  if (json && json.done && json.final) return {final:json.final};
+  if (json && Array.isArray(json.assignments)) return {assignments:json.assignments, thoughts:json.thoughts};
+  return null;
+}
+async function runManager(){
+  const team = T(); const o = team.opts;
+  const mgr = agentById(o.managerId) || team.agents[0];
+  const workers = team.agents.filter(a => a.id !== mgr.id);
+  if (!workers.length) throw new Error('A manager needs at least one team member to delegate to.');
+  const roster = workers.map(w => `- "${w.name}": ${w.role}`).join('\n');
+  const sys = baseSystem(mgr, `You are the MANAGER of this team. You do not do the specialist work yourself; you plan, delegate, review and integrate.
+
+HOW TO RESPOND — always choose exactly one:
+(A) Delegate: reply with a short note, then a fenced json block:
+${FENCE}json
+{"thoughts":"brief reasoning","assignments":[{"to":"<exact member name>","task":"<specific, self-contained instructions incl. everything they need>"}]}
+${FENCE}
+Members listed in the same reply work in parallel. You can assign several tasks per round.
+(B) Finish: when the work is complete and good, reply with a line "FINAL ANSWER" followed by the complete final deliverable (include every final file in full, each preceded by "File: name.ext").
+`);
+  const msgs = [{role:'user', content:`${projectHeader()}${fileListNote()}\n# Your team\n${roster}\n\nPlan the work and make the first assignments.`}];
+  const results = {};
+  const maxR = Math.max(1, +o.managerRounds || 4);
+  for (let r = 1; r <= maxR + 1; r++){
+    const last = r > maxR;
+    if (last) msgs.push({role:'user', content:'You have reached the maximum number of delegation rounds. Reply now with FINAL ANSWER and the complete deliverable.'});
+    const text = await agentTurn(mgr, sys, msgs, {label: last ? 'final' : `planning ${r}`, mock:{kind:'manager', members:workers}});
+    msgs.push({role:'assistant', content:text});
+    let p = parseManager(text);
+    if (!p && !last){
+      msgs.push({role:'user', content:'I could not parse your reply. Respond with either a ```json block containing "assignments", or a line FINAL ANSWER followed by the deliverable.'});
+      const t2 = await agentTurn(mgr, sys, msgs, {label:'format fix', mock:{kind:'manager', members:workers}});
+      msgs.push({role:'assistant', content:t2}); p = parseManager(t2);
+    }
+    if (!p) return text;
+    if (p.final != null) return p.final || text;
+    const asg = p.assignments.map(x => ({...x, agent: workers.find(w => w.name.toLowerCase() === String(x.to||'').toLowerCase().trim()) || workers.find(w => String(x.to||'').toLowerCase().includes(w.name.toLowerCase()))}));
+    const unknown = asg.filter(x => !x.agent);
+    if (unknown.length) sysNote(`⚠️ Manager assigned to unknown member(s): ${unknown.map(x => x.to).join(', ')}`, 'warn');
+    const valid = asg.filter(x => x.agent);
+    if (!valid.length){ msgs.push({role:'user', content:`None of those names match. Valid member names: ${workers.map(w => w.name).join(', ')}.`}); continue; }
+    sysNote(`👑 ${mgr.name} assigned: ${valid.map(x => x.agent.name).join(', ')}`);
+    const runOne = async x => {
+      const others = Object.entries(results).filter(([id]) => id !== x.agent.id).map(([id, t]) => `## ${agentById(id).name}\n${truncate(t, 4000)}`).join('\n\n');
+      const user = `${projectHeader()}${fileListNote()}\n# Task from your manager ${mgr.name}\n${x.task}\n` + (results[x.agent.id] ? `\n# Your previous output\n${truncate(results[x.agent.id], +S.settings.maxChars||24000)}\n` : '') + (others ? `\n# Latest work from teammates (for reference)\n${others}\n` : '') + `\nComplete the task fully.`;
+      const t = await agentTurn(x.agent, baseSystem(x.agent, `Your manager is ${mgr.name}.\n`), [{role:'user', content:user}], {label:`task r${r}`, mock:{kind:'worker'}});
+      results[x.agent.id] = t;
+      return `## Result from ${x.agent.name}\n${truncate(t, +S.settings.maxChars||24000)}`;
+    };
+    const outs = team.opts.parallel !== false ? await Promise.all(valid.map(runOne)) : await (async () => { const a = []; for (const x of valid) a.push(await runOne(x)); return a; })();
+    msgs.push({role:'user', content:`${outs.join('\n\n')}\n\nReview these results critically. Either assign follow-up/fix tasks (json) or finish with FINAL ANSWER. Rounds used: ${r}/${maxR}.`});
+  }
+  return msgs[msgs.length-1].content;
+}
+
+async function startRun(isContinue){
+  if (RUN) return;
+  const team = T();
+  if (!team.agents.length){ toast('Add at least one agent first'); showTab('team'); return; }
+  S.project.goal = $('#goal').value; S.project.context = $('#ctxt').value;
+  if (!S.project.goal.trim()){ toast('Describe the project goal first'); $('#goal').focus(); return; }
+  // validate providers
+  for (const a of team.agents){
+    const {P, key} = providerConf(a.provider);
+    if (!P.noKey && !key){ toast(`${a.name}: no API key for ${P.label}`); showTab('settings'); return; }
+  }
+  const prior = isContinue ? {final:S.run.final, feedback:$('#feedback').value.trim()} : null;
+  if (isContinue && !prior.feedback){ toast('Write some feedback first'); $('#feedback').focus(); return; }
+  if (!isContinue){ S.run = {log:[], files:S.run.files && confirmKeepFiles() ? S.run.files : {}, final:'', usage:{}, title:team.name}; $('#log').innerHTML = ''; renderFiles(); }
+  RUN = {abort:new AbortController(), activeLinks:new Set(), prior};
+  team.agents.forEach(a => setNode(a.id, null));
+  document.body.classList.add('running');
+  $('#btnRun').disabled = true; $('#btnStop').disabled = false; $('#btnContinue').disabled = true;
+  const modeName = {pipeline:'Pipeline', roundtable:'Round-table', manager:'Manager'}[team.mode];
+  sysNote(`${isContinue ? '↻ Continuing' : '🚀 Starting'} “${team.name}” · ${modeName} mode · ${team.agents.length} agents` + (isContinue ? `\n\nFeedback: ${prior.feedback}` : ''));
+  const t0 = Date.now();
+  try {
+    let final;
+    if (team.mode === 'roundtable') final = await runRoundtable();
+    else if (team.mode === 'manager') final = await runManager();
+    else final = await runPipeline();
+    S.run.final = final || '';
+    extractFiles(S.run.final, 'Final');
+    logPush({type:'final', text:S.run.final, ms:Date.now() - t0});
+    if (isContinue) $('#feedback').value = '';
+    toast('✅ Team finished');
+    notifyDone();
+  } catch(e){
+    if (e.name === 'AbortError') sysNote('⏹ Run stopped.', 'warn');
+    else { sysNote('❌ ' + (e.message || e), 'err'); console.error(e); }
+  } finally {
+    RUN = null; document.body.classList.remove('running');
+    $('#btnRun').disabled = false; $('#btnStop').disabled = true; $('#btnContinue').disabled = false;
+    $('#contBox').classList.toggle('hidden', !S.run.final);
+    drawLinks(); renderStats(); save(true);
+  }
+}
+function confirmKeepFiles(){
+  return Object.keys(S.run.files || {}).length > 0 && confirm('Keep the current workspace files so the team can build on them?\n\nOK = keep files · Cancel = start with an empty workspace');
+}
+function stopRun(){ if (RUN){ RUN.abort.abort(); } }
+function notifyDone(){
+  try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('AI Team Studio', {body:'Your team finished the run.'}); } catch(e){}
+  try { navigator.vibrate && navigator.vibrate(80); } catch(e){}
+}
+
+/* ---------------- Run log rendering ---------------- */
+let allCollapsed = false;
+function renderLogEntry(e, scroll){
+  const log = $('#log');
+  const div = document.createElement('div'); div.id = 'e-' + e.id;
+  log.appendChild(div); updateLogEntry(e);
+  if (scroll) { const near = log.scrollHeight - log.scrollTop - log.clientHeight < 200; if (near || e.type !== 'agent') log.scrollTop = log.scrollHeight; }
+}
+function updateLogEntry(e, streaming){
+  const div = document.getElementById('e-' + e.id); if (!div) return;
+  const log = $('#log'); const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+  if (e.type === 'sys'){
+    div.className = 'card sys';
+    div.innerHTML = `<div class="cb" style="color:${e.cls==='err'?'var(--err)':e.cls==='warn'?'var(--warn)':e.cls==='ok'?'var(--ok)':''}">${md(e.text)}</div>`;
+  } else if (e.type === 'final'){
+    div.className = 'card final';
+    div.innerHTML = `<div class="ch"><span class="emo">🏁</span><b class="grow">Final result</b><span class="pill">${((e.ms||0)/1000).toFixed(0)}s total</span>
+      <button class="ghost" data-act="copy">Copy</button><button class="ghost" data-act="dl">⬇ .md</button></div><div class="cb md">${md(e.text)}</div>`;
+    div.querySelector('[data-act=copy]').onclick = ev => { ev.stopPropagation(); copyText(e.text); };
+    div.querySelector('[data-act=dl]').onclick = ev => { ev.stopPropagation(); saveFile('final-result.md', e.text, 'text/markdown'); };
+  } else {
+    const st = e.status === 'running' ? '<span class="status running">working…</span>' : e.status === 'error' ? '<span class="status error">error</span>' : e.status === 'stopped' ? '<span class="status error">stopped</span>' : e.verdict === 'approved' ? '<span class="status approved">✔ approved</span>' : e.verdict === 'changes' ? '<span class="status changes">changes requested</span>' : '<span class="status done">done</span>';
+    const usage = e.usage ? `<span class="pill" title="tokens in / out">${fmtNum(e.usage.in||0)}↓ ${fmtNum(e.usage.out||0)}↑</span>` : '';
+    const time = e.ms ? `<span class="pill">${(e.ms/1000).toFixed(1)}s</span>` : '';
+    const files = e.files && e.files.length ? `<div class="row small" style="margin-top:6px">📁 ${e.files.map(f => `<a href="#" class="pill" data-file="${esc(f)}">${esc(f)}</a>`).join(' ')}</div>` : '';
+    const body = e.error ? `<p style="color:var(--err)">${esc(e.error)}</p>` + (e.text ? md(e.text) : '') :
+                 streaming || e.status === 'running' ? `<pre class="stream">${esc(e.text || '')}${e.note ? `\n<span class="muted">${esc(e.note)}</span>` : (e.text ? '' : '<span class="muted">thinking…</span>')}</pre>` : md(e.text);
+    const collapsed = div.classList.contains('collapsed') || (allCollapsed && e.status !== 'running');
+    div.className = 'card' + (e.status === 'error' ? ' err' : '') + (collapsed ? ' collapsed' : '');
+    div.innerHTML = `<div class="ch"><span class="emo">${esc(e.emoji)}</span><b>${esc(e.name)}</b><span class="muted small grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.label ? e.label + ' · ' : '')}${esc(e.model || '')}</span>${usage}${time}${st}</div><div class="cb md">${body}${files}</div>`;
+    div.querySelector('.ch').onclick = () => div.classList.toggle('collapsed');
+    div.querySelectorAll('[data-file]').forEach(a => a.onclick = ev => { ev.preventDefault(); selFile = a.dataset.file; showTab('files'); });
+  }
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+function renderLog(){
+  $('#log').innerHTML = '';
+  if (!S.run.log.length){
+    $('#log').innerHTML = `<div class="card sys"><div class="cb">No runs yet. Enter a project goal on the left and press <b>Run team</b>. Agents' work appears here live.</div></div>`;
+  }
+  S.run.log.forEach(e => { if (e.status === 'running'){ e.status = 'stopped'; e.error = 'Interrupted (page reloaded)'; } renderLogEntry(e); });
+  $('#contBox').classList.toggle('hidden', !S.run.final);
+  renderStats();
+}
+function renderStats(){
+  let tin = 0, tout = 0, calls = 0;
+  Object.values(S.run.usage || {}).forEach(u => { tin += u.in; tout += u.out; calls += u.calls; });
+  $('#stats').innerHTML = calls ? `<span>${calls} turns</span><span>${fmtNum(tin)} tokens in</span><span>${fmtNum(tout)} tokens out</span>` : '';
+  const t = T();
+  const mode = {pipeline:'🔗 Pipeline', roundtable:'💬 Round-table', manager:'👑 Manager'}[t.mode];
+  $('#runSummary').innerHTML = `<b>${esc(t.name)}</b> · ${mode}<br>${t.agents.map(a => `${esc(a.emoji)} ${esc(a.name)} <span class="muted">(${esc(PROVIDERS[a.provider]?.label.split(' (')[0] || a.provider)} · ${esc(a.model)})</span>`).join('<br>')}<br><a href="#" onclick="showTab('team');return false">Edit team →</a>`;
+}
+function exportReport(){
+  const lines = [`# ${S.run.title || T().name} — AI team report`, '', `**Goal:** ${S.project.goal}`, ''];
+  if (S.project.context) lines.push(`**Context:** ${S.project.context}`, '');
+  for (const e of S.run.log){
+    if (e.type === 'sys') lines.push(`> ${e.text.replace(/\n/g, '\n> ')}`, '');
+    else if (e.type === 'final') lines.push('---', '', '# 🏁 Final result', '', e.text, '');
+    else lines.push(`## ${e.emoji} ${e.name}${e.label ? ' — ' + e.label : ''}`, '', e.error ? `**Error:** ${e.error}` : e.text, '');
+  }
+  saveFile('ai-team-report.md', lines.join('\n'), 'text/markdown');
+}
+
+/* ---------------- Files view ---------------- */
+let selFile = null, fileMode = 'code';
+function renderFiles(){
+  const names = Object.keys(S.run.files || {}).sort();
+  const box = $('#fileItems');
+  if (!names.length){ box.innerHTML = '<p class="muted small">No files yet. When agents write code or documents with a <span class="kbd">File: name.ext</span> line above a code block, they appear here.</p>'; }
+  else box.innerHTML = names.map(n => {
+    const f = S.run.files[n];
+    const ico = /\.html?$/.test(n) ? '🌐' : /\.(js|ts|py|css|json|java|c|cpp|go|rs|rb|php|sh)$/.test(n) ? '📄' : /\.md$/.test(n) ? '📝' : '📃';
+    return `<div class="fileitem ${n === selFile ? 'sel' : ''}" data-n="${esc(n)}"><span>${ico}</span><div class="grow"><div class="fn">${esc(n)}</div><div class="small muted">v${f.v} · ${esc(f.by)}</div></div></div>`;
+  }).join('');
+  box.querySelectorAll('.fileitem').forEach(el => el.onclick = () => { selFile = el.dataset.n; fileMode = /\.html?$/.test(selFile) ? 'preview' : 'code'; renderFiles(); });
+  if (selFile && !S.run.files[selFile]) selFile = null;
+  if (!selFile && names.length) { selFile = names.find(n => /index\.html?$/.test(n)) || names[0]; fileMode = /\.html?$/.test(selFile) ? 'preview' : 'code'; return renderFiles(); }
+  renderFileView();
+}
+function buildPreview(name){
+  let html = S.run.files[name].content;
+  const dir = name.includes('/') ? name.slice(0, name.lastIndexOf('/') + 1) : '';
+  const get = p => { p = p.replace(/^\.\//, ''); return S.run.files[dir + p] || S.run.files[p]; };
+  html = html.replace(/<link\b[^>]*href=["']([^"']+\.css)["'][^>]*>/gi, (m, href) => { const f = get(href); return f ? `<style>\n${f.content}\n</style>` : m; });
+  html = html.replace(/<script\b([^>]*)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi, (m, a, src, b) => { const f = get(src); return f ? `<script${a}${b}>\n${f.content.replace(/<\/script/gi, '<\\/script')}\n<\/script>` : m; });
+  return html;
+}
+function renderFileView(){
+  const v = $('#fileView');
+  if (!selFile){ v.innerHTML = '<div class="pad muted">Select a file.</div>'; return; }
+  const f = S.run.files[selFile]; const isHtml = /\.html?$/.test(selFile);
+  v.innerHTML = `<div class="fvh"><b class="grow" style="font-family:var(--mono);overflow:hidden;text-overflow:ellipsis">${esc(selFile)}</b>
+    ${isHtml ? `<button data-m="preview" class="${fileMode==='preview'?'primary':''}">▶ Preview</button><button data-m="code" class="${fileMode==='code'?'primary':''}">Code</button>${window.AndroidBridge ? '' : '<button id="fvPop" title="Open preview in new tab">↗</button>'}` : ''}
+    <button id="fvCopy">Copy</button><button id="fvDl">⬇</button><button id="fvDel" class="ghost danger">🗑</button></div>` +
+    (isHtml && fileMode === 'preview' ? `<iframe sandbox="allow-scripts allow-modals allow-forms allow-pointer-lock allow-popups" title="Preview"></iframe>` : `<pre>${esc(f.content)}</pre>`);
+  const ifr = v.querySelector('iframe'); if (ifr) ifr.srcdoc = buildPreview(selFile);
+  v.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { fileMode = b.dataset.m; renderFileView(); });
+  $('#fvCopy').onclick = () => copyText(f.content);
+  $('#fvDl').onclick = () => saveFile(selFile.split('/').pop(), f.content, mimeOf(selFile));
+  $('#fvDel').onclick = () => { if (confirm('Delete ' + selFile + '?')){ delete S.run.files[selFile]; selFile = null; save(); renderFiles(); } };
+  const pop = $('#fvPop'); if (pop) pop.onclick = () => { const w = window.open(); if (w){ w.document.open(); w.document.write(buildPreview(selFile)); w.document.close(); } else saveFile(selFile.split('/').pop(), buildPreview(selFile), 'text/html'); };
+}
+function mimeOf(n){ return /\.html?$/.test(n) ? 'text/html' : /\.css$/.test(n) ? 'text/css' : /\.js$/.test(n) ? 'text/javascript' : /\.json$/.test(n) ? 'application/json' : /\.md$/.test(n) ? 'text/markdown' : 'text/plain'; }
+// minimal ZIP (store) writer
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files){
+  const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
+  const d = new Date(); const dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF; const dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth()+1) << 5) | d.getDate()) & 0xFFFF;
+  for (const [name, content] of files){
+    const nb = enc.encode(name), data = enc.encode(content), crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, dt, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true);
+    h.setUint16(26, nb.length, true); h.setUint16(28, 0, true);
+    parts.push(new Uint8Array(h.buffer), nb, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+    c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+    c.setUint16(28, nb.length, true); c.setUint32(42, off, true);
+    central.push(new Uint8Array(c.buffer), nb);
+    off += 30 + nb.length + data.length;
+  }
+  const csize = central.reduce((s, p) => s + p.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csize, true); e.setUint32(16, off, true);
+  const all = [...parts, ...central, new Uint8Array(e.buffer)];
+  const out = new Uint8Array(all.reduce((s, p) => s + p.length, 0)); let p = 0; for (const a of all){ out.set(a, p); p += a.length; }
+  return out;
+}
+
+/* ---------------- Graph editor ---------------- */
+const NODE_W = 210;
+let dragState = null;
+function worldPoint(clientX, clientY){
+  const r = $('#canvas').getBoundingClientRect();
+  return {x:(clientX - r.left - S.view.x) / S.view.z, y:(clientY - r.top - S.view.y) / S.view.z};
+}
+function applyView(){ $('#world').style.transform = `translate(${S.view.x}px,${S.view.y}px) scale(${S.view.z})`; }
+function renderTeam(){
+  const t = T();
+  $('#teamName').value = t.name;
+  $('#modeSel').value = t.mode;
+  renderModeOpts();
+  const nodes = $('#nodes'); nodes.innerHTML = '';
+  for (const a of t.agents){
+    const el = document.createElement('div');
+    const isMgr = (t.mode === 'manager' && (t.opts.managerId === a.id || (!agentById(t.opts.managerId) && t.agents[0] === a))) || (t.mode === 'roundtable' && t.opts.synthId === a.id);
+    el.className = 'node' + (nodeStatus[a.id] ? ' ' + nodeStatus[a.id] : '') + (isMgr ? ' mgr' : '');
+    el.dataset.id = a.id; el.style.left = a.x + 'px'; el.style.top = a.y + 'px';
+    const pv = PROVIDERS[a.provider]?.label.split(' (')[0] || a.provider;
+    el.innerHTML = `<span class="badge">working</span>
+      <div class="head"><div class="emo">${esc(a.emoji)}</div><div style="min-width:0"><div class="nm">${esc(a.name)}</div><div class="rl">${esc(a.role)}</div></div></div>
+      <div class="meta"><span class="pill">${esc(pv)}</span><span class="pill" style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${esc(a.model || 'no model')}</span>${isMgr ? `<span class="pill" style="color:var(--warn)">${t.mode === 'manager' ? '👑 manager' : '🧠 synthesizer'}</span>` : ''}</div>
+      <div class="port in" title="Input"></div><div class="port out" title="Drag to another agent to link"></div>`;
+    nodes.appendChild(el);
+  }
+  $('#emptyCanvas').classList.toggle('hidden', t.agents.length > 0);
+  $('#canvasHint').innerHTML = t.mode === 'pipeline'
+    ? 'Drag from the <b style="color:var(--accent)">●</b> on an agent to another agent to pass work along. A link pointing <i>back</i> becomes a <b style="color:var(--warn)">feedback loop</b>. Tap a link to remove it. Tap an agent to edit.'
+    : t.mode === 'roundtable' ? 'Round-table: all agents discuss in turns (top-to-bottom order). Links are ignored. Pick a synthesizer in the toolbar.'
+    : 'Manager mode: the manager (👑) delegates tasks to the others and assembles the result. Links are ignored.';
+  applyView();
+  requestAnimationFrame(drawLinks);
+  renderStats();
+}
+function nodeRect(id){
+  const a = agentById(id); const el = document.querySelector(`.node[data-id="${id}"]`);
+  return {x:a.x, y:a.y, w:NODE_W, h:el ? el.offsetHeight : 90};
+}
+function edgePath(a, b){
+  const x1 = a.x + a.w, y1 = a.y + a.h/2, x2 = b.x, y2 = b.y + b.h/2;
+  if (x2 > x1 + 20){ const dx = Math.max(40, (x2 - x1)/2); return `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`; }
+  if (Math.abs(y2 - y1) > Math.max(a.h, b.h)){ const k = 70 + Math.abs(y2 - y1) * 0.25; return `M${x1},${y1} C${x1+k},${y1} ${x2-k},${y2} ${x2},${y2}`; }
+  // backwards on the same row: loop around below
+  const low = Math.max(a.y + a.h, b.y + b.h) + 50;
+  return `M${x1},${y1} C${x1+90},${y1} ${x1+90},${low} ${(x1+x2)/2},${low} S${x2-90},${y2} ${x2},${y2}`;
+}
+function edgeLabelPos(a, b){
+  const x1 = a.x + a.w, y1 = a.y + a.h/2, x2 = b.x, y2 = b.y + b.h/2;
+  if (x2 > x1 + 20 || Math.abs(y2 - y1) > Math.max(a.h, b.h)) return {x:(x1 + x2)/2 + 8, y:(y1 + y2)/2};
+  return {x:(x1 + x2)/2 - 26, y:Math.max(a.y + a.h, b.y + b.h) + 66};
+}
+function drawLinks(){
+  const t = T(); const svg = $('#links');
+  const show = t.mode === 'pipeline';
+  const {back} = analyseGraph(t);
+  let h = `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--link)"/></marker>
+    <marker id="arrL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/></marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent2)"/></marker></defs>`;
+  if (show) for (const l of t.links){
+    if (!agentById(l.from) || !agentById(l.to)) continue;
+    const a = nodeRect(l.from), b = nodeRect(l.to); const d = edgePath(a, b);
+    const isLoop = back.has(l.id), act = RUN && RUN.activeLinks.has(l.id);
+    h += `<path class="edge ${isLoop ? 'loop' : ''} ${act ? 'active' : ''}" d="${d}" marker-end="url(#${act ? 'arrA' : isLoop ? 'arrL' : 'arr'})"/>`;
+    h += `<path class="hit" data-link="${l.id}" d="${d}"/>`;
+    if (isLoop){ const lp = edgeLabelPos(a, b); h += `<text x="${lp.x}" y="${lp.y}">↺ loop</text>`; }
+  }
+  if (dragState && dragState.type === 'link'){
+    const a = nodeRect(dragState.from);
+    h += `<path class="edge temp" d="M${a.x + a.w},${a.y + a.h/2} L${dragState.x},${dragState.y}"/>`;
+  }
+  svg.innerHTML = h;
+  svg.querySelectorAll('[data-link]').forEach(p => p.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const l = t.links.find(x => x.id === p.dataset.link);
+    if (l && confirm(`Remove link ${agentById(l.from).name} → ${agentById(l.to).name}?`)){ t.links = t.links.filter(x => x !== l); save(); drawLinks(); }
+  }));
+}
+function setupCanvas(){
+  const cv = $('#canvas');
+  const pointers = new Map(); let pinch = null;
+  cv.addEventListener('pointerdown', e => {
+    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if (pointers.size === 2){ const [p1, p2] = [...pointers.values()]; pinch = {d:Math.hypot(p1.x-p2.x, p1.y-p2.y), z:S.view.z}; dragState = null; return; }
+    const port = e.target.closest('.port.out'); const node = e.target.closest('.node');
+    if (port && node){ const p = worldPoint(e.clientX, e.clientY); dragState = {type:'link', from:node.dataset.id, x:p.x, y:p.y}; }
+    else if (node){ const a = agentById(node.dataset.id); const p = worldPoint(e.clientX, e.clientY); dragState = {type:'node', id:a.id, dx:p.x - a.x, dy:p.y - a.y, sx:e.clientX, sy:e.clientY, moved:false}; }
+    else if (e.target.closest('[data-link]')) return;
+    else if (e.target === cv || e.target.closest('#world')){ dragState = {type:'pan', sx:e.clientX, sy:e.clientY, vx:S.view.x, vy:S.view.y}; }
+    else return;
+    try { cv.setPointerCapture(e.pointerId); } catch(_){}
+  });
+  cv.addEventListener('pointermove', e => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if (pinch && pointers.size === 2){
+      const [p1, p2] = [...pointers.values()]; const d = Math.hypot(p1.x-p2.x, p1.y-p2.y);
+      zoomAt((p1.x+p2.x)/2, (p1.y+p2.y)/2, Math.min(2, Math.max(.3, pinch.z * d / pinch.d)));
+      return;
+    }
+    if (!dragState) return;
+    if (dragState.type === 'pan'){ S.view.x = dragState.vx + e.clientX - dragState.sx; S.view.y = dragState.vy + e.clientY - dragState.sy; applyView(); }
+    else if (dragState.type === 'node'){
+      if (Math.abs(e.clientX - dragState.sx) + Math.abs(e.clientY - dragState.sy) > 4) dragState.moved = true;
+      if (!dragState.moved) return;
+      const p = worldPoint(e.clientX, e.clientY); const a = agentById(dragState.id);
+      a.x = Math.round(p.x - dragState.dx); a.y = Math.round(p.y - dragState.dy);
+      const el = document.querySelector(`.node[data-id="${a.id}"]`); el.style.left = a.x + 'px'; el.style.top = a.y + 'px';
+      drawLinks();
+    } else if (dragState.type === 'link'){ const p = worldPoint(e.clientX, e.clientY); dragState.x = p.x; dragState.y = p.y; drawLinks(); }
+  });
+  const end = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (!dragState) return;
+    const ds = dragState; dragState = null;
+    if (ds.type === 'node'){ if (!ds.moved) openAgent(ds.id); else save(); }
+    else if (ds.type === 'link'){
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.node');
+      if (target && target.dataset.id !== ds.from) addLink(ds.from, target.dataset.id);
+      drawLinks();
+    } else if (ds.type === 'pan') save();
+  };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.min(2, Math.max(.3, S.view.z * (e.deltaY < 0 ? 1.1 : 0.9)))); }, {passive:false});
+  $('#zoomIn').onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.left + r.width/2, r.top + r.height/2, Math.min(2, S.view.z * 1.2)); };
+  $('#zoomOut').onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.left + r.width/2, r.top + r.height/2, Math.max(.3, S.view.z / 1.2)); };
+  $('#zoomFit').onclick = fitView;
+  $('#autoLayout').onclick = () => { autoLayoutTeam(T()); renderTeam(); fitView(); save(); };
+}
+function zoomAt(cx, cy, z){
+  const r = $('#canvas').getBoundingClientRect(); const px = cx - r.left, py = cy - r.top;
+  S.view.x = px - (px - S.view.x) * z / S.view.z; S.view.y = py - (py - S.view.y) * z / S.view.z; S.view.z = z;
+  applyView(); save();
+}
+function fitView(){
+  const t = T(); const cv = $('#canvas'); if (!t.agents.length || !cv.clientWidth) return;
+  const xs = t.agents.map(a => a.x), ys = t.agents.map(a => a.y);
+  const minX = Math.min(...xs) - 40, minY = Math.min(...ys) - 40, maxX = Math.max(...xs) + NODE_W + 40, maxY = Math.max(...ys) + 190;
+  const z = Math.min(1.15, Math.max(.3, Math.min(cv.clientWidth / (maxX - minX), cv.clientHeight / (maxY - minY))));
+  S.view.z = z; S.view.x = (cv.clientWidth - (maxX - minX) * z) / 2 - minX * z; S.view.y = (cv.clientHeight - (maxY - minY) * z) / 2 - minY * z;
+  applyView(); save();
+}
+function autoLayoutTeam(team){
+  const prevTeam = S.team; S.team = team;
+  const narrow = window.innerWidth < 700;
+  if (team.mode !== 'pipeline' || !team.links.length){
+    const cols = narrow ? 2 : Math.min(3, team.agents.length);
+    team.agents.forEach((a, i) => { a.x = 60 + (i % cols) * 270; a.y = 60 + Math.floor(i / cols) * 170; });
+  } else {
+    const {level} = analyseGraph(team); const byLv = {};
+    team.agents.forEach(a => (byLv[level[a.id]] = byLv[level[a.id]] || []).push(a));
+    Object.entries(byLv).forEach(([lv, arr]) => arr.forEach((a, i) => {
+      if (narrow){ a.x = 60 + i * 250; a.y = 60 + (+lv) * 190; } else { a.x = 60 + (+lv) * 290; a.y = 80 + i * 170 - (arr.length - 1) * 30; }
+    }));
+  }
+  S.team = prevTeam || team;
+}
+function addLink(from, to){
+  const t = T();
+  if (t.links.some(l => l.from === from && l.to === to)){ toast('Already linked'); return; }
+  t.links.push({id:uid(), from, to}); save();
+  const {back} = analyseGraph(t);
+  const l = t.links[t.links.length-1];
+  toast(back.has(l.id) ? `↺ Feedback loop: ${agentById(from).name} can send work back to ${agentById(to).name}` : `🔗 ${agentById(from).name} → ${agentById(to).name}`);
+  if (t.mode !== 'pipeline'){ t.mode = 'pipeline'; renderTeam(); toast('Switched to Pipeline mode (links are used there)'); }
+}
+function addAgent(presetKey){
+  if (!presetKey){ return openPresetPicker(); }
+  const t = T(); const cv = $('#canvas');
+  const p = worldPoint(cv.getBoundingClientRect().left + cv.clientWidth/2 - 100, cv.getBoundingClientRect().top + cv.clientHeight/2 - 50);
+  const a = makeAgent(presetKey, Math.round(p.x + (Math.random()*60-30)), Math.round(p.y + (Math.random()*60-30)));
+  // unique name
+  let n = a.name, i = 2; while (t.agents.some(x => x.name === n)) n = `${a.name} ${i++}`; a.name = n;
+  t.agents.push(a); save(); renderTeam(); closeModal(); openAgent(a.id);
+}
+
+/* ---------------- Mode options ---------------- */
+function renderModeOpts(){
+  const t = T(), o = t.opts, box = $('#modeOpts');
+  const agentOpts = sel => t.agents.map(a => `<option value="${a.id}" ${sel === a.id ? 'selected' : ''}>${esc(a.emoji + ' ' + a.name)}</option>`).join('');
+  if (t.mode === 'pipeline') box.innerHTML = `<span class="opt" title="How many times a reviewer can send work back">loops <input type="number" min="0" max="10" id="oLoops" value="${o.maxLoops}"></span>
+    <span class="opt" title="Word a reviewer writes to approve">approve word <input id="oKw" value="${esc(o.keyword)}" style="width:96px"></span>
+    <label class="opt" style="margin:0"><input type="checkbox" id="oPar" ${o.parallel !== false ? 'checked' : ''} style="width:auto"> parallel</label>`;
+  else if (t.mode === 'roundtable') box.innerHTML = `<span class="opt">rounds <input type="number" min="1" max="10" id="oRounds" value="${o.rounds}"></span>
+    <span class="opt">synthesizer <select id="oSynth"><option value="">(none)</option>${agentOpts(o.synthId)}</select></span>`;
+  else box.innerHTML = `<span class="opt">manager <select id="oMgr">${agentOpts(o.managerId || t.agents[0]?.id)}</select></span>
+    <span class="opt" title="Max delegation rounds">rounds <input type="number" min="1" max="12" id="oMR" value="${o.managerRounds}"></span>
+    <label class="opt" style="margin:0"><input type="checkbox" id="oPar" ${o.parallel !== false ? 'checked' : ''} style="width:auto"> parallel</label>`;
+  const bind = (id, fn) => { const el = $('#' + id); if (el) el.onchange = () => { fn(el); save(); renderTeam(); }; };
+  bind('oLoops', el => o.maxLoops = Math.max(0, +el.value || 0));
+  bind('oKw', el => o.keyword = el.value.trim() || 'APPROVED');
+  bind('oPar', el => o.parallel = el.checked);
+  bind('oRounds', el => o.rounds = Math.max(1, +el.value || 1));
+  bind('oSynth', el => o.synthId = el.value);
+  bind('oMgr', el => o.managerId = el.value);
+  bind('oMR', el => o.managerRounds = Math.max(1, +el.value || 1));
+}
+
+/* ---------------- Agent drawer ---------------- */
+let editId = null;
+function openAgent(id){
+  const a = agentById(id); if (!a) return; editId = id;
+  document.querySelectorAll('.node').forEach(n => n.classList.toggle('sel', n.dataset.id === id));
+  const t = T();
+  $('#drTitle').textContent = `${a.emoji} ${a.name}`;
+  const provOpts = Object.entries(PROVIDERS).map(([k, p]) => `<option value="${k}" ${a.provider === k ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
+  const others = t.agents.filter(x => x.id !== id);
+  $('#drBody').innerHTML = `
+    <div class="row"><div style="width:70px"><label>Icon</label><input id="aEmoji" value="${esc(a.emoji)}" maxlength="4" style="text-align:center;font-size:18px"></div>
+    <div class="grow"><label>Name</label><input id="aName" value="${esc(a.name)}"></div></div>
+    <label>Role (one line — teammates see this)</label><input id="aRole" value="${esc(a.role)}">
+    <label>Instructions / personality (system prompt)</label><textarea id="aSys" rows="8">${esc(a.system)}</textarea>
+    <div class="row small muted" style="margin-top:4px">Load preset: <select id="aPreset" style="width:auto;padding:3px 6px"><option value="">—</option>${Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.emoji} ${esc(p.name)}</option>`).join('')}</select></div>
+    <div class="row"><div class="grow"><label>AI provider</label><select id="aProv">${provOpts}</select></div></div>
+    <label>Model</label>
+    <div class="row"><input id="aModel" class="grow" value="${esc(a.model)}" list="dl-aModel" placeholder="model id"><datalist id="dl-aModel"></datalist><button id="aFetch" title="Fetch available models">↻</button></div>
+    <div class="row">
+      <div class="grow"><label>Max output tokens</label><input id="aMax" type="number" min="256" step="256" placeholder="${S.settings.maxTokens} (default)" value="${esc(a.maxTokens)}"></div>
+      <div class="grow" id="aTempBox"><label>Temperature</label><input id="aTemp" type="number" min="0" max="2" step="0.1" placeholder="default" value="${esc(a.temperature)}"></div>
+      <div class="grow" id="aEffBox"><label>Effort</label><select id="aEff"><option value="">default</option>${['low','medium','high','xhigh','max'].map(x => `<option ${a.effort === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    </div>
+    <label>Sends its output to ${t.mode !== 'pipeline' ? '<span class="pill">used in Pipeline mode</span>' : ''}</label>
+    ${others.length ? others.map(o => `<label class="chk"><input type="checkbox" data-to="${o.id}" ${t.links.some(l => l.from === id && l.to === o.id) ? 'checked' : ''}> ${esc(o.emoji)} ${esc(o.name)} <span class="muted small">— ${esc(o.role)}</span></label>`).join('') : '<p class="muted small">Add more agents to link them.</p>'}
+    <label>Receives input from</label>
+    <p class="small muted" style="margin:0">${t.links.filter(l => l.to === id).map(l => agentById(l.from)).filter(Boolean).map(x => esc(x.emoji + ' ' + x.name)).join(', ') || 'nobody (starts the pipeline)'}</p>
+    ${S.run.usage[id] ? `<p class="small muted">Last run: ${S.run.usage[id].calls} turns · ${fmtNum(S.run.usage[id].in)} in / ${fmtNum(S.run.usage[id].out)} out tokens</p>` : ''}
+  `;
+  $('#drFoot').innerHTML = `<button class="danger" id="aDel">Delete</button><button id="aDup">Duplicate</button><button id="aTest">Test</button><div class="grow"></div><button class="primary" onclick="closeDrawer()">Done</button>`;
+  const upd = () => {
+    a.emoji = $('#aEmoji').value || '🤖'; a.name = $('#aName').value.trim() || 'Agent'; a.role = $('#aRole').value; a.system = $('#aSys').value;
+    a.provider = $('#aProv').value; a.model = $('#aModel').value.trim(); a.maxTokens = $('#aMax').value; a.temperature = $('#aTemp').value; a.effort = $('#aEff').value;
+    $('#drTitle').textContent = `${a.emoji} ${a.name}`; save(); renderTeamDebounced();
+  };
+  const syncProv = () => {
+    const P = PROVIDERS[$('#aProv').value];
+    $('#dl-aModel').innerHTML = modelsFor($('#aProv').value).map(m => `<option value="${esc(m)}">`).join('');
+    $('#aEffBox').classList.toggle('hidden', P.kind !== 'anthropic');
+    $('#aTempBox').classList.toggle('hidden', P.kind === 'anthropic' || P.kind === 'mock');
+  };
+  syncProv();
+  $('#drBody').querySelectorAll('input:not([data-to]),textarea,select:not(#aPreset)').forEach(el => el.addEventListener('input', upd));
+  $('#aProv').addEventListener('change', () => {
+    const pid = $('#aProv').value; const ms = modelsFor(pid);
+    if (pid === S.defaults.provider) $('#aModel').value = S.defaults.model; else if (!ms.includes($('#aModel').value)) $('#aModel').value = ms[0] || '';
+    syncProv(); upd();
+    const {P, key} = providerConf(pid); if (!P.noKey && !key) toast(`Add your ${P.label} key in Settings`);
+  });
+  $('#aPreset').onchange = () => { const p = PRESETS[$('#aPreset').value]; if (!p) return; if (!confirm(`Replace name, role and instructions with “${p.name}”?`)) return;
+    Object.assign(a, {name:p.name, emoji:p.emoji, role:p.role, system:p.system, preset:$('#aPreset').value}); save(); renderTeam(); openAgent(id); };
+  $('#aFetch').onclick = async () => { try { $('#aFetch').disabled = true; const l = await fetchModels($('#aProv').value); syncProv(); toast(`${l.length} models found`); } catch(e){ toast('Could not fetch models: ' + e.message, 4000); } finally { $('#aFetch').disabled = false; } };
+  $('#drBody').querySelectorAll('[data-to]').forEach(cb => cb.onchange = () => {
+    if (cb.checked) addLink(id, cb.dataset.to); else { t.links = t.links.filter(l => !(l.from === id && l.to === cb.dataset.to)); save(); }
+    drawLinks();
+  });
+  $('#aDel').onclick = () => { if (!confirm(`Delete ${a.name}?`)) return; t.agents = t.agents.filter(x => x.id !== id); t.links = t.links.filter(l => l.from !== id && l.to !== id); save(); closeDrawer(); renderTeam(); };
+  $('#aDup').onclick = () => { const b = clone(a); b.id = uid(); b.name = a.name + ' copy'; b.x += 30; b.y += 30; t.agents.push(b); save(); renderTeam(); openAgent(b.id); };
+  $('#aTest').onclick = async () => {
+    const btn = $('#aTest'); btn.disabled = true; btn.textContent = 'Testing…';
+    try { const r = await callLLM(a, 'You are being connection-tested. Reply in one short friendly sentence that includes your name.', [{role:'user', content:`Hi ${a.name}, are you there?`}], null, AbortSignal.timeout ? AbortSignal.timeout(60000) : undefined);
+      toast('✅ ' + r.text.slice(0, 140), 4000); }
+    catch(e){ toast('❌ ' + e.message, 6000); }
+    finally { btn.disabled = false; btn.textContent = 'Test'; }
+  };
+  $('#drawer').classList.add('open'); $('#drawer').setAttribute('aria-hidden', 'false');
+}
+let rtd = null; function renderTeamDebounced(){ clearTimeout(rtd); rtd = setTimeout(() => { const keep = editId; renderTeam(); if (keep) document.querySelector(`.node[data-id="${keep}"]`)?.classList.add('sel'); }, 250); }
+function closeDrawer(){ $('#drawer').classList.remove('open'); $('#drawer').setAttribute('aria-hidden', 'true'); editId = null; document.querySelectorAll('.node.sel').forEach(n => n.classList.remove('sel')); renderTeam(); }
+
+/* ---------------- Modals ---------------- */
+function openModal(title, html){ $('#mTitle').textContent = title; $('#mBody').innerHTML = html; $('#modalbg').classList.add('open'); }
+function closeModal(){ $('#modalbg').classList.remove('open'); }
+$('#modalbg').addEventListener('click', e => { if (e.target.id === 'modalbg') closeModal(); });
+function openTemplates(){
+  openModal('Start from a template', `<p class="muted" style="margin-top:0">Templates replace the current team (save it first under 💾 Teams if you want to keep it). Every agent is fully editable afterwards.</p>
+    <div class="tplgrid">${TEMPLATES.map(t => `<div class="tpl" data-t="${t.id}"><div class="e">${t.emoji}</div><div class="t">${esc(t.title)}</div><div class="small muted">${esc(t.desc)}</div><div style="margin-top:8px"><span class="pill">${{pipeline:'🔗 pipeline', roundtable:'💬 round-table', manager:'👑 manager'}[t.mode]}</span></div></div>`).join('')}
+    <div class="tpl" data-t="blank"><div class="e">➕</div><div class="t">Blank team</div><div class="small muted">Start from scratch and add your own agents.</div></div></div>`);
+  $('#mBody').querySelectorAll('.tpl').forEach(el => el.onclick = () => {
+    if (RUN){ toast('Stop the current run first'); return; }
+    const tpl = TEMPLATES.find(t => t.id === el.dataset.t);
+    S.team = tpl ? teamFromTemplate(tpl) : blankTeam();
+    if (tpl){ S.project.goal = tpl.goal; $('#goal').value = tpl.goal; }
+    Object.keys(nodeStatus).forEach(k => delete nodeStatus[k]);
+    save(); closeModal(); renderTeam(); setTimeout(fitView, 30); toast(`Loaded “${S.team.name}”`);
+  });
+}
+function openPresetPicker(){
+  openModal('Add an agent', `<div class="tplgrid">${Object.entries(PRESETS).map(([k, p]) => `<div class="tpl" data-p="${k}"><div class="e">${p.emoji}</div><div class="t">${esc(p.name)}</div><div class="small muted">${esc(p.role)}</div></div>`).join('')}</div>`);
+  $('#mBody').querySelectorAll('.tpl').forEach(el => el.onclick = () => addAgent(el.dataset.p));
+}
+function openTeams(){
+  const names = Object.keys(S.saved);
+  openModal('Teams', `
+    <div class="row"><input id="saveName" class="grow" value="${esc(T().name)}" placeholder="Team name"><button class="primary" id="btnSaveTeam">💾 Save current team</button></div>
+    <h4 style="margin:18px 0 8px">Saved teams</h4>
+    ${names.length ? names.map(n => `<div class="row" style="padding:8px 10px;background:var(--bg2);border-radius:9px;margin-bottom:6px"><b class="grow">${esc(n)}</b><span class="small muted">${S.saved[n].agents.length} agents · ${S.saved[n].mode}</span><button data-load="${esc(n)}">Load</button><button class="ghost danger" data-del="${esc(n)}">🗑</button></div>`).join('') : '<p class="muted small">No saved teams yet.</p>'}
+    <h4 style="margin:18px 0 8px">Share</h4>
+    <div class="row"><button id="btnExportTeam">⬇ Export team file (.json)</button><button id="btnImportTeam">⬆ Import team file</button></div>
+    <p class="small muted">Team files contain agents, links and settings — never API keys — so they are safe to share.</p>`);
+  $('#btnSaveTeam').onclick = () => { const n = $('#saveName').value.trim() || 'Team'; T().name = n; S.saved[n] = clone(T()); save(); renderTeam(); openTeams(); toast('Saved'); };
+  $('#mBody').querySelectorAll('[data-load]').forEach(b => b.onclick = () => { if (RUN) return toast('Stop the run first'); S.team = clone(S.saved[b.dataset.load]); S.team.id = uid(); save(); closeModal(); renderTeam(); setTimeout(fitView, 30); });
+  $('#mBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('Delete saved team?')){ delete S.saved[b.dataset.del]; save(); openTeams(); } });
+  $('#btnExportTeam').onclick = () => saveFile((T().name || 'team').replace(/[^\w-]+/g, '_') + '.aiteam.json', JSON.stringify({format:'ai-team-studio/team@1', team:T()}, null, 2), 'application/json');
+  $('#btnImportTeam').onclick = () => pickFile(txt => {
+    const j = JSON.parse(txt); const team = j.team || j;
+    if (!team.agents || !team.links) throw new Error('Not a team file');
+    team.id = uid(); team.opts = Object.assign(blankTeam().opts, team.opts || {});
+    S.team = team; save(); closeModal(); renderTeam(); setTimeout(fitView, 30); toast('Team imported');
+  });
+}
+function pickFile(cb){
+  const fp = $('#filePick'); fp.value = '';
+  fp.onchange = () => { const f = fp.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { try { cb(r.result); } catch(e){ toast('Import failed: ' + e.message, 4000); } }; r.readAsText(f); };
+  fp.click();
+}
+
+/* ---------------- Settings ---------------- */
+function renderSettings(){
+  $('#provGrid').innerHTML = Object.entries(PROVIDERS).filter(([k]) => k !== 'mock').map(([k, P]) => {
+    const c = S.providers[k] || {}; const has = P.noKey || (c.key || '').trim();
+    return `<div class="prov"><h4>${esc(P.label)} ${has && !P.noKey ? '<span class="ok">✓</span>' : ''}</h4>
+      <div class="small muted">${esc(P.help)}</div>
+      ${P.noKey && k !== 'custom' ? '' : `<label>API key</label><div class="row"><input type="password" class="grow" data-k="${k}" data-f="key" value="${esc(c.key || '')}" placeholder="${k === 'custom' || k === 'ollama' ? 'optional' : 'paste key'}" autocomplete="off"><button class="ghost" data-show="${k}" title="Show/hide">👁</button></div>`}
+      ${P.kind === 'openai' ? `<label>Base URL</label><input data-k="${k}" data-f="base" value="${esc(c.base ?? P.base ?? '')}" placeholder="https://…/v1">` : ''}
+      <div class="row" style="margin-top:8px"><button data-fetch="${k}">↻ Fetch models</button><span class="small muted" data-cnt="${k}">${(S.modelCache[k] || []).length ? (S.modelCache[k].length + ' models cached') : ''}</span></div>
+    </div>`;
+  }).join('');
+  $('#provGrid').querySelectorAll('input[data-k]').forEach(el => el.oninput = () => { S.providers[el.dataset.k][el.dataset.f] = el.value.trim(); save(); });
+  $('#provGrid').querySelectorAll('[data-show]').forEach(b => b.onclick = () => { const i = b.previousElementSibling; i.type = i.type === 'password' ? 'text' : 'password'; });
+  $('#provGrid').querySelectorAll('[data-fetch]').forEach(b => b.onclick = async () => {
+    b.disabled = true; const k = b.dataset.fetch;
+    try { const l = await fetchModels(k); $(`[data-cnt="${k}"]`).textContent = `✓ ${l.length} models`; renderDefaults(); toast(`${PROVIDERS[k].label}: ${l.length} models`); }
+    catch(e){ $(`[data-cnt="${k}"]`).textContent = '✗ ' + e.message.slice(0, 80); }
+    finally { b.disabled = false; }
+  });
+  renderDefaults();
+  $('#setMaxTok').value = S.settings.maxTokens; $('#setMaxChars').value = S.settings.maxChars;
+  $('#setFallback').checked = !!S.settings.fallback; $('#setAutoFiles').checked = !!S.settings.autoFiles; $('#setTheme').value = S.settings.theme;
+}
+function renderDefaults(){
+  $('#defProv').innerHTML = Object.entries(PROVIDERS).map(([k, p]) => `<option value="${k}" ${S.defaults.provider === k ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
+  $('#defModel').value = S.defaults.model;
+  $('#dl-defModel').innerHTML = modelsFor(S.defaults.provider).map(m => `<option value="${esc(m)}">`).join('');
+}
+function bindSettings(){
+  $('#defProv').onchange = () => { S.defaults.provider = $('#defProv').value; const ms = modelsFor(S.defaults.provider); S.defaults.model = ms[0] || ''; renderDefaults(); save(); };
+  $('#defModel').oninput = () => { S.defaults.model = $('#defModel').value.trim(); save(); };
+  $('#btnApplyAll').onclick = () => { if (!S.defaults.model && S.defaults.provider !== 'mock'){ toast('Choose a model first'); return; } T().agents.forEach(a => { a.provider = S.defaults.provider; a.model = S.defaults.model; }); save(); renderTeam(); toast(`All agents now use ${PROVIDERS[S.defaults.provider].label} · ${S.defaults.model}`); };
+  $('#setMaxTok').onchange = () => { S.settings.maxTokens = Math.max(256, +$('#setMaxTok').value || 8000); save(); };
+  $('#setMaxChars').onchange = () => { S.settings.maxChars = Math.max(2000, +$('#setMaxChars').value || 24000); save(); };
+  $('#setFallback').onchange = () => { S.settings.fallback = $('#setFallback').checked; save(); };
+  $('#setAutoFiles').onchange = () => { S.settings.autoFiles = $('#setAutoFiles').checked; save(); };
+  $('#setTheme').onchange = () => { S.settings.theme = $('#setTheme').value; applyTheme(); save(); };
+  $('#btnExportAll').onclick = () => { if (confirm('The backup includes your API keys. Keep the file private. Continue?')) saveFile('ai-team-studio-backup.json', JSON.stringify(S, null, 2), 'application/json'); };
+  $('#btnImportAll').onclick = () => pickFile(txt => { const j = JSON.parse(txt); if (!j.providers || !j.team) throw new Error('Not a backup file'); localStorage.setItem(LS_KEY, txt); location.reload(); });
+  $('#btnReset').onclick = () => { if (confirm('Erase all teams, keys, files and history on this device?')){ try { localStorage.removeItem(LS_KEY); } catch(e){} location.reload(); } };
+}
+
+/* ---------------- Guide ---------------- */
+const GUIDE = `
+# 📖 How to use AI Team Studio
+
+AI Team Studio lets you **link several AI agents into a team** — each with its own role, instructions and even its own AI model — and have them work on your project together: planning, building, reviewing and improving each other's work.
+
+## Quick start (2 minutes)
+
+1. **Try the demo first.** The app opens with the *Software Dev Team* template on the free **Demo** provider (simulated replies). Go to **▶️ Run** and press **▶ Run team** to see how a team works.
+2. **Add a real AI.** Open **⚙️ Settings**, paste an API key (Anthropic, OpenAI, Gemini, OpenRouter, Groq…), then under *Defaults for new agents* pick the provider and model and press **Apply to every agent**.
+3. **Describe your project.** On the **Run** tab write the goal (be specific: features, audience, format) plus any extra context.
+4. **Run it.** Watch each agent work live. Generated files appear in **📁 Files**, where you can preview web pages, copy, or download everything as a ZIP.
+5. **Iterate.** After a run, type feedback under *Continue with feedback* and the whole team revises the result.
+
+## Building a team
+
+- **✨ Templates** — ready-made teams: Software Dev, Game Studio, Content Studio, Full Product Squad, Brainstorm Round-table and Manager-led Team.
+- **＋ Agent** — add an agent from a preset (Developer, Reviewer, Writer, Researcher…) or a blank one.
+- **Tap an agent** to edit its name, icon, role, instructions (system prompt), AI provider and model. Each agent can use a *different* AI — e.g. a cheap fast model for drafting and a powerful one for reviewing.
+- **Link agents** — drag from the purple **●** on the right of an agent onto another agent. On phones you can also tick *Sends its output to* in the agent editor.
+- **Remove a link** — tap it. **Move** agents by dragging; **pan** by dragging the background; **zoom** with pinch, mouse wheel or the ＋/－ buttons; **☷** auto-arranges.
+- **💾 Teams** — save several teams, load them later, or export a team file to share (keys are never included).
+
+## The three collaboration modes
+
+### 🔗 Pipeline (follow the links)
+Work flows along the arrows. An agent runs once all agents linking into it have finished, and receives their outputs.
+- Agents at the same step run **in parallel** (toggle *parallel*).
+- **Feedback loops:** link an agent *back* to an earlier one (e.g. Reviewer → Developer). The link turns orange and dashed (↺ loop). The reviewer then acts as a **quality gate**: if its reply contains the approve word (default **APPROVED**) the run ends; otherwise its feedback is sent back, and the earlier agent and everything after it re-run. *loops* limits how many times this can happen.
+- The final result is the work of the agents at the end of the chain (and the producers inside loops).
+
+### 💬 Round-table
+All agents discuss the goal in turns (ordered top-to-bottom on the canvas) for a number of *rounds*, seeing everything said so far. Great for brainstorming, decisions, critiques and research. Optionally pick a **synthesizer** that writes the final answer from the discussion. If everyone writes AGREED, the discussion ends early.
+
+### 👑 Manager delegates
+One agent is the **manager**. It plans the work, assigns tasks to teammates by name (several in parallel), reviews their results, assigns fixes, and finally writes the complete deliverable. Best for open-ended projects where the steps aren't known in advance. *rounds* caps the delegation cycles.
+
+## Files & previews
+When an agent writes a line like **File: index.html** above a code block, the file is saved into the shared **📁 Files** workspace (newer versions replace older ones). HTML files get a live **▶ Preview** — linked CSS/JS files from the workspace are inlined automatically. Download single files or **⬇ ZIP** everything. Agents are told which files exist, and on *Continue* runs you can keep the workspace so they build on it.
+
+## AI providers
+| Provider | Notes |
+|---|---|
+| Demo | Free simulated replies for learning the app |
+| Anthropic Claude | Key from console.anthropic.com. Models like claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5. *Effort* lets you trade depth for speed and cost |
+| OpenAI | Key from platform.openai.com — press ↻ to fetch models |
+| Google Gemini | Key from aistudio.google.com |
+| OpenRouter | One key, hundreds of models (many free ones) |
+| Groq | Very fast open-source models |
+| Ollama | Free local models on your computer — start Ollama with \`OLLAMA_ORIGINS="*"\` |
+| Custom | Any OpenAI-compatible server (LM Studio, Together, DeepSeek, Mistral, vLLM…) |
+
+Your keys stay on this device and are sent only to the provider you choose. API usage is billed by the provider — the Run tab shows token counts.
+
+## Tips for great results
+- **Be specific in the goal.** "A single-file HTML app with X, Y and Z, for mobile, dark theme" beats "make an app".
+- **Give each agent a clear, narrow job** in its instructions. Specialists beat generalists.
+- **Put a reviewer/tester in a loop** with the producer — this is where the quality comes from.
+- **Mix models:** a strong model as reviewer or manager, cheaper models for drafting.
+- **Raise *Max output tokens*** for agents that write long code (e.g. 16000–32000).
+- If a run stops early or a reply is cut off, use **Continue with feedback** ("finish the remaining parts").
+
+## Install as an app (no browser bars)
+- **Android (Chrome):** menu ⋮ → *Install app* / *Add to Home screen*. It opens full-screen like a native app.
+- **iPhone/iPad (Safari):** Share → *Add to Home Screen*.
+- **Desktop (Chrome/Edge):** click the install icon in the address bar.
+- **Android APK:** a native wrapper is included (see the project README) — GitHub Actions builds the APK for you.
+
+(Installing requires the app to be served over https — e.g. GitHub Pages. Opening the HTML file directly works too, just without install.)
+
+## Troubleshooting
+- **"Network/CORS error"** — check your internet, the base URL, and for local servers (Ollama/LM Studio) enable browser access (CORS).
+- **HTTP 401** — wrong or missing API key. **404** — wrong model name (press ↻ to fetch models). **429** — rate limited; the app retries automatically.
+- **Use "Test"** in an agent's editor to check its provider and model quickly.
+- Everything is saved automatically in this browser. Use *Settings → Back up everything* to move to another device.
+`;
+
+/* ---------------- Tabs & init ---------------- */
+function showTab(name){
+  S.tab = name; save();
+  $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  if (name === 'team') { renderTeam(); }
+  if (name === 'run') renderStats();
+  if (name === 'files') renderFiles();
+  if (name === 'settings') renderSettings();
+  if (name === 'guide' && !$('#guideBody').innerHTML) $('#guideBody').innerHTML = md(GUIDE);
+}
+window.__back = () => { // Android back button
+  if ($('#modalbg').classList.contains('open')){ closeModal(); return true; }
+  if ($('#drawer').classList.contains('open')){ closeDrawer(); return true; }
+  if (S.tab !== 'team'){ showTab('team'); return true; }
+  return false;
+};
+function init(){
+  applyTheme();
+  $$('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $('#teamName').oninput = () => { T().name = $('#teamName').value; save(); };
+  $('#modeSel').onchange = () => { T().mode = $('#modeSel').value; save(); renderTeam(); };
+  $('#btnTemplates').onclick = openTemplates;
+  $('#btnAddAgent').onclick = () => addAgent();
+  $('#btnTeams').onclick = openTeams;
+  $('#btnGoRun').onclick = () => showTab('run');
+  $('#goal').value = S.project.goal; $('#ctxt').value = S.project.context;
+  $('#goal').oninput = () => { S.project.goal = $('#goal').value; save(); };
+  $('#ctxt').oninput = () => { S.project.context = $('#ctxt').value; save(); };
+  $('#btnRun').onclick = () => { if (S.run.log.length && !confirm('Start a new run? The current activity log will be replaced (use “Continue with feedback” to build on it).')) return; startRun(false); };
+  $('#btnContinue').onclick = () => startRun(true);
+  $('#btnStop').onclick = stopRun;
+  $('#btnClearLog').onclick = () => { if (RUN) return; if (confirm('Clear the activity log?')){ S.run.log = []; S.run.final = ''; S.run.usage = {}; save(); renderLog(); } };
+  $('#btnExportMd').onclick = exportReport;
+  $('#btnCollapse').onclick = () => { allCollapsed = !allCollapsed; $$('#log .card:not(.sys):not(.final)').forEach(c => c.classList.toggle('collapsed', allCollapsed)); };
+  $('#btnZip').onclick = () => { const f = Object.entries(S.run.files).map(([n, v]) => [n, v.content]); if (!f.length) return toast('No files yet'); saveFile((T().name || 'project').replace(/[^\w-]+/g, '_') + '.zip', makeZip(f), 'application/zip'); };
+  $('#btnClearFiles').onclick = () => { if (confirm('Delete all workspace files?')){ S.run.files = {}; selFile = null; save(); renderFiles(); } };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') window.__back(); if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.tab === 'run' && !RUN) $('#btnRun').click(); });
+  window.addEventListener('resize', () => drawLinks());
+  setupCanvas(); bindSettings(); renderLog(); renderFiles();
+  showTab(S.tab || 'team');
+  if (!S.seenGuide){ S.seenGuide = true; save(); setTimeout(fitView, 50); toast('👋 New here? The 📖 Guide tab explains everything.', 4000); }
+  else setTimeout(() => { if (!T().agents.length) return; const cv = $('#canvas'); const r = cv.getBoundingClientRect(); const a = T().agents[0]; const sx = S.view.x + a.x * S.view.z; if (sx < -200 || sx > r.width) fitView(); }, 50);
+  // PWA
+  if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.AndroidBridge) navigator.serviceWorker.register('sw.js').catch(() => {});
+  let deferred = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('#installHint').innerHTML = '<a href="#" id="instLink">Install as app</a>'; $('#instLink').onclick = ev => { ev.preventDefault(); deferred.prompt(); }; });
+  if (window.matchMedia('(display-mode: standalone)').matches || window.AndroidBridge) $('#installHint').textContent = 'running as an app';
+  else if (!$('#installHint').textContent) $('#installHint').textContent = 'tip: add to your home screen to use it like an app';
+  try { if ('Notification' in window && Notification.permission === 'default') document.addEventListener('click', function ask(){ if (S.tab === 'run') { Notification.requestPermission().catch(()=>{}); document.removeEventListener('click', ask); } }); } catch(e){}
+}
+init();
+</script>
+</body>
+</html>

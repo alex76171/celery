@@ -1,0 +1,30 @@
+name: AI Team Studio – publish web app to GitHub Pages
+
+# Run manually from the Actions tab. One-time setup first:
+# Settings → Pages → Build and deployment → Source: "GitHub Actions".
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect site files
+        run: |
+          mkdir -p _site
+          cp ai-team/index.html ai-team/manifest.webmanifest ai-team/sw.js ai-team/icon.svg ai-team/icon-192.png ai-team/icon-512.png _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
