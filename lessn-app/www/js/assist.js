@@ -4,7 +4,7 @@ import {
   S, t, $, esc, icon, fmt, relDay, inDays, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, rerenderSheet,
   toast, haptic, colorFor, subjLabel, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
 } from './core.js';
-import { chat as aiChat, studyPlan as aiPlan, DEFAULT_MODEL } from './ai.js';
+import { chat as aiChat, studyPlan as aiPlan, DEFAULT_MODEL, LANG_NAME } from './ai.js';
 import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
 import { render, setView } from './app.js';
 
@@ -113,7 +113,7 @@ export function summariesFor(subject, n = 5) {
 const summaryText = (list) => list.map((x) => `- ${fmt(fromUntisDate(x.date), { day: 'numeric', month: 'short' })}: ${x.result.title}. ${x.result.summary} Topics: ${(x.result.topics || []).join(', ')}. Homework: ${(x.result.homework || []).join('; ') || '–'}. Tests: ${(x.result.tests || []).map((ts) => `${ts.what} ${ts.when}`).join('; ') || '–'}`).join('\n');
 
 function systemPrompt(extra) {
-  const lang = { en: 'English', de: 'German', tr: 'Turkish', fr: 'French' }[S.settings.lang] || 'German';
+  const lang = LANG_NAME[S.settings.lang] || 'German';
   return `You are a friendly, patient tutor for a school student in Germany. Explain step by step and check understanding.
 Help the student learn: give hints and explanations before full solutions, but give the full solution if they ask for it.
 Reply in ${lang} unless the student writes in another language. Keep answers short and clear, use simple Markdown (bold, lists).
@@ -121,13 +121,14 @@ Today is ${fmt(new Date(), { weekday: 'long', day: 'numeric', month: 'long', yea
 ${extra || ''}`;
 }
 
-export function newChat({ title, context = '', kind = 'free', subject = '' } = {}) {
+export function newChat({ title, context = '', kind = 'free', subject = '', keepPending = false, go = true } = {}) {
   const c = { id: `c${Date.now()}`, title: title || t('New chat'), context, kind, subject, t: Date.now(), messages: [] };
   saveChats([c, ...chats()]);
   live[c.id] = [];
   current = c.id;
-  pending = [];
-  setView('ai-chat', 'left');
+  if (!keepPending) pending = [];
+  if (go) setView('ai-chat', 'left');
+  return c;
 }
 
 export function chatForHomework(key) {
@@ -155,15 +156,51 @@ Offer to quiz them with practice questions.`,
   });
 }
 
+const firstName = () => {
+  const u = store.iserv()?.username || S.account?.username || '';
+  const f = u.split(/[._\s@-]/)[0];
+  return f ? f[0].toUpperCase() + f.slice(1).toLowerCase() : '';
+};
+
+function suggestions() {
+  const out = [];
+  const tomorrow = toUntisDate(addDays(new Date(), 1));
+  const hw = allHomework().filter((h) => !hwDoneAny(h) && h.due <= tomorrow).sort((a, b) => a.due - b.due)[0];
+  if (hw) out.push({ ic: 'clipboard-list', title: t('Help with my homework'), sub: hw.text.slice(0, 60), act: 'ai-homework', data: `data-key="${esc(hw.key)}"` });
+  const ex = [...(S.exams || []), ...store.myExams()].filter((e) => e.date >= toUntisDate(new Date())).sort((a, b) => a.date - b.date)[0];
+  if (ex) out.push({ ic: 'graduation-cap', title: t('Prepare for my exam'), sub: `${subjLabel(ex.subject) || ex.name} · ${inDays(fromUntisDate(ex.date))}`, act: 'ai-exam', data: `data-id="${esc(examId(ex))}"` });
+  const sum = summariesFor('', 1)[0];
+  if (sum) out.push({ ic: 'book-open', title: t('Explain my last lesson'), sub: sum.result.title, act: 'ai-prompt', data: `data-text="${esc(t('Explain the most important points of my last lesson ({title}) simply.', { title: sum.result.title }))}"` });
+  out.push({ ic: 'camera', title: t('Solve a task from a photo'), sub: t('Take a photo and ask'), act: 'ai-photo', data: '' });
+  out.push({ ic: 'lightbulb', title: t('Explain a topic to me'), sub: t('Step by step, like a tutor'), act: 'ai-prompt', data: `data-text="${esc(t('Explain a topic to me'))}"` });
+  return out.slice(0, 4);
+}
+
+const composer = (placeholder) => `<div class="composer-dock">
+  <div class="attach-row" id="attach-row">${pendingHtml()}</div>
+  <form class="composer gem" id="ai-composer">
+    <label class="attach" aria-label="${esc(t('Add a photo'))}">${icon('plus')}<input type="file" id="ai-file" accept="image/*" multiple hidden></label>
+    <textarea id="ai-input" rows="1" placeholder="${esc(placeholder)}" enterkeyhint="send"></textarea>
+    <button class="send" aria-label="${esc(t('Send'))}">${icon('arrow-up')}</button>
+  </form>
+  <p class="ai-disclaimer">${esc(t('The AI can make mistakes. Check important answers.'))}</p>
+</div>`;
+
+/** Start screen of the AI tab: greeting, suggestions, recent chats and the message bar at the bottom. */
 export function viewAI() {
-  const list = chats();
-  return `<div class="pad">
-    <button class="ai-cta big" data-act="ai-new"${stagger(0)}><span class="ai-orb">${icon('sparkles')}</span><span><b>${esc(t('New chat'))}</b><small>${esc(t('Ask anything, or send a photo of a task'))}</small></span>${icon('plus', 'row-chev')}</button>
-    ${store.aiKey() ? '' : `<div class="notice warn">${icon('key-round')}<span>${esc(t('Add your Gemini API key to use the AI.'))}</span></div><button class="btn small ghost" data-act="setup-ai">${esc(t('Set up AI'))}</button>`}
-    ${list.length ? `<div class="section-title">${icon('message-square')}${esc(t('Your chats'))}</div><div class="card">${list.map((c) => `<button class="chat-row" data-act="ai-open" data-id="${c.id}">
-      <span class="av group" style="--c:${c.subject ? colorFor(c.subject) : S.settings.accent}">${icon(c.kind === 'exam' ? 'graduation-cap' : c.kind === 'homework' ? 'clipboard-list' : 'sparkles')}</span>
-      <span class="chat-row-text"><span class="chat-row-top"><b>${esc(c.title)}</b><small>${esc(relDay(new Date(c.t)))}</small></span>
-      <span class="chat-row-bottom"><span>${esc((c.messages[c.messages.length - 1]?.text || '').slice(0, 80))}</span></span></span></button>`).join('')}</div>` : ''}
+  const list = chats().slice(0, 8);
+  const name = firstName();
+  return `<div class="chat-wrap ai-home">
+    <div class="ai-hero">
+      <div class="ai-spark">${icon('sparkles')}</div>
+      <h1 class="ai-hello">${esc(name ? t('Hi {name}', { name }) : t('Hi there'))}</h1>
+      <h2 class="ai-ask">${esc(t('How can I help you today?'))}</h2>
+    </div>
+    ${store.aiKey() ? '' : `<button class="ai-setup" data-act="setup-ai">${icon('key-round')}<span><b>${esc(t('Set up AI'))}</b><small>${esc(t('Add your Gemini API key to use the AI.'))}</small></span>${icon('chevron-right', 'row-chev')}</button>`}
+    <div class="ai-sugs">${suggestions().map((x, i) => `<button class="ai-sug" data-act="${x.act}" ${x.data} style="--i:${i}"><b>${esc(x.title)}</b><small>${esc(x.sub)}</small><span class="ai-sug-ic">${icon(x.ic)}</span></button>`).join('')}</div>
+    ${list.length ? `<div class="section-title">${esc(t('Recent'))}</div><div class="ai-recent">${list.map((c) => `<button class="ai-rec" data-act="ai-open" data-id="${c.id}">${icon(c.kind === 'exam' ? 'graduation-cap' : c.kind === 'homework' ? 'clipboard-list' : 'message-square')}<span>${esc(c.title)}</span></button>`).join('')}</div>` : ''}
+    <div class="grow"></div>
+    ${composer(t('Ask the AI…'))}
   </div>`;
 }
 
@@ -188,10 +225,10 @@ function md(s) {
 function chatMessages(c) {
   const msgs = live[c.id] || c.messages;
   const intro = c.context ? `<div class="ai-context">${icon('info')}<span>${esc(t('The AI knows about this task and your recent lessons.'))}</span></div>` : '';
-  return intro + msgs.map((m) => `<div class="msg ${m.role === 'user' ? 'me' : 'them'} tail">
-    ${m.role === 'model' ? '<span class="av sm ai">' + icon('sparkles') + '</span>' : ''}
-    <div class="bubble ${m.role === 'model' ? 'ai-bubble' : ''}">${(m.images || []).filter((i) => i.thumb).map((i) => `<img class="msg-img" src="${i.thumb}" alt="">`).join('')}<span class="txt">${m.role === 'model' ? md(m.text) : esc(m.text)}</span></div>
-  </div>`).join('') + (S.aiThinking === c.id ? `<div class="msg them tail"><span class="av sm ai">${icon('sparkles')}</span><div class="bubble ai-bubble typing"><i></i><i></i><i></i></div></div>` : '');
+  return intro + msgs.map((m) => (m.role === 'user'
+    ? `<div class="gm-user">${(m.images || []).filter((i) => i.thumb).map((i) => `<img class="msg-img" src="${i.thumb}" alt="">`).join('')}${m.text ? `<div class="gm-ubub">${esc(m.text)}</div>` : ''}</div>`
+    : `<div class="gm-ai"><span class="gm-spark">${icon('sparkles')}</span><div class="gm-text">${md(m.text)}</div></div>`)).join('')
+    + (S.aiThinking === c.id ? `<div class="gm-ai thinking"><span class="gm-spark spin">${icon('sparkles')}</span><div class="gm-text"><span class="shimmer">${esc(t('Thinking…'))}</span><i class="gm-line"></i><i class="gm-line short"></i></div></div>` : '');
 }
 
 export function viewAIChat() {
@@ -201,14 +238,12 @@ export function viewAIChat() {
   const starters = c.kind === 'exam' ? [t('Quiz me with 5 questions'), t('Explain the most important topics'), t('What should I learn today?')]
     : c.kind === 'homework' ? [t('Explain how to start'), t('Give me a hint'), t('Check my solution')]
       : [t('Explain a topic to me'), t('Help me with my homework'), t('Make a summary of my last lesson')];
-  return `<div class="chat"><div id="msgs" class="msgs">${chatMessages(c)}</div>
-    ${(live[c.id] || c.messages).length ? '' : `<div class="starters">${starters.map((x) => `<button class="chip" data-act="ai-starter" data-text="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}</div>
-  <div class="attach-row" id="attach-row">${pendingHtml()}</div>
-  <form class="composer" id="ai-composer">
-    <label class="attach" aria-label="${esc(t('Add a photo'))}">${icon('image')}<input type="file" id="ai-file" accept="image/*" multiple hidden></label>
-    <textarea id="ai-input" rows="1" placeholder="${esc(t('Ask the AI…'))}" enterkeyhint="send"></textarea>
-    <button class="send" aria-label="${esc(t('Send'))}">${icon('send')}</button>
-  </form>`;
+  const empty = !(live[c.id] || c.messages).length;
+  return `<div class="chat-wrap">
+    <div class="chat gem-chat"><div id="msgs" class="msgs">${chatMessages(c)}</div>
+    ${empty && !S.aiThinking ? `<div class="starters">${starters.map((x) => `<button class="chip" data-act="ai-starter" data-text="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}</div>
+    ${composer(t('Ask the AI…'))}
+  </div>`;
 }
 const pendingHtml = () => pending.map((p, i) => `<span class="att-prev"><img src="${p.thumb}" alt=""><button data-act="ai-unattach" data-i="${i}">${icon('x')}</button></span>`).join('');
 export function unattach(i) { pending.splice(i, 1); $('#attach-row').innerHTML = pendingHtml(); }
@@ -246,6 +281,7 @@ export async function sendAI(textOverride) {
   const text = (textOverride ?? input?.value ?? '').trim();
   if (!text && !pending.length) return;
   if (!store.aiKey()) { toast(t('Add your Gemini API key first.'), 'err'); return; }
+  if (S.view === 'ai') newChat({ keepPending: true });
   const list = chats();
   const c = list.find((x) => x.id === current);
   if (!c) return;
@@ -267,7 +303,11 @@ export async function sendAI(textOverride) {
   c.t = Date.now();
   if (c.title === t('New chat') && text) c.title = text.slice(0, 48);
   saveChats([c, ...chats().filter((x) => x.id !== c.id)]);
-  if (S.view === 'ai-chat' && current === c.id) repaint(c);
+  if (S.view === 'ai-chat' && current === c.id) {
+    repaint(c);
+    const title = $('#title');
+    if (title) title.textContent = c.title;
+  }
 }
 function repaint(c) {
   const box = $('#msgs');

@@ -3,7 +3,7 @@
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 export const DEFAULT_MODEL = 'gemini-flash-latest';
 
-const LANG_NAME = { en: 'English', de: 'German', tr: 'Turkish', fr: 'French' };
+export const LANG_NAME = { en: 'English', de: 'German', tr: 'Turkish', fr: 'French', es: 'Spanish', pl: 'Polish', ru: 'Russian', uk: 'Ukrainian', ar: 'Arabic' };
 
 function prompt(lang, ctx) {
   return `You are given the audio recording of a school lesson${ctx.subject ? ` in the subject "${ctx.subject}"` : ''}${ctx.date ? ` held on ${ctx.date}` : ''}.
@@ -78,7 +78,7 @@ export async function studyPlan({ apiKey, model, lang, exam, today, summaries })
 Today is ${today}. The exam is on ${exam.date}: subject "${exam.subject}", "${exam.name}". ${exam.text ? `Details: ${exam.text}.` : ''}
 ${summaries.length ? `Here are summaries of recent lessons in this subject. Base the plan on their topics:\n${summaries.map((s, i) => `Lesson ${i + 1} (${s.date}): ${s.title}. Topics: ${s.topics.join(', ')}. Key points: ${s.keyPoints.join('; ')}`).join('\n')}` : 'No lesson summaries are available, so plan around typical topics for this subject and keep tasks general.'}
 Spread the work from today until the day before the exam, 20–45 minutes per day, with a review day at the end. Skip days only if there are more than 10 days.
-Answer in ${({ en: 'English', de: 'German', tr: 'Turkish', fr: 'French' })[lang] || 'German'}. Return ONLY JSON:
+Answer in ${LANG_NAME[lang] || 'German'}. Return ONLY JSON:
 {"plan":[{"date":"YYYY-MM-DD","title":"short focus of the day","tasks":["concrete task"],"minutes":30}],"tips":["short tip"]}`;
   const text = await gemini({ apiKey, model, contents: [{ role: 'user', parts: [{ text: prompt }] }], json: true, temperature: 0.4 });
   const out = JSON.parse(text.replace(/^```(json)?|```$/g, '').trim());

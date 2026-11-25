@@ -14,12 +14,13 @@ function langPicker() {
   return `<div class="lang-pick">${icon('globe')}<select id="lang-sel">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${S.settings.lang === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>`;
 }
 
-const HELLOS = [['en', 'Hello'], ['de', 'Hallo'], ['tr', 'Merhaba'], ['fr', 'Bonjour']];
+const HELLOS = [['en', 'Hello'], ['de', 'Hallo'], ['tr', 'Merhaba'], ['fr', 'Bonjour'], ['es', 'Hola'], ['pl', 'Cześć'], ['uk', 'Привіт'], ['ru', 'Привет'], ['ar', 'مرحبا']];
 function step0() {
   return `<div class="hello">
     <div class="hello-words">${HELLOS.map(([k, w], i) => `<span class="hello-w" style="--n:${i}" lang="${k}">${w}</span>`).join('')}</div>
     <div class="hello-bottom">
-      <div class="hello-langs">${Object.entries(LANGS).map(([k, v]) => `<button class="hello-lang ${S.settings.lang === k ? 'on' : ''}" data-login="lang" data-l="${k}">${esc(v)}</button>`).join('')}</div>
+      <label class="hello-lang-dd">${icon('globe')}<span>${esc(LANGS[S.settings.lang] || 'English')}</span>${icon('chevron-down')}
+        <select id="lang-sel" aria-label="Language">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${S.settings.lang === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
       <button class="hello-go" data-login="start" aria-label="${esc(t('Continue'))}">${icon('chevron-right')}</button>
     </div>
   </div>`;

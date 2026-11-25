@@ -2,7 +2,7 @@
 import {
   S, t, esc, icon, fmt, fmtTime, durText, relDay, inDays, sameDay, addDays, mondayOf, daysBetween, nowMin, weekNumber,
   toUntisDate, fromUntisDate, subjKey, subjName, subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge,
-  stagger, openSheet, haptic,
+  stagger, openSheet, haptic, seg,
 } from './core.js';
 import { allHomework, hwDoneAny, homeExtras, examId } from './assist.js';
 import {
@@ -259,8 +259,10 @@ export function viewWeek() {
   const nav = `<div class="week-nav">
     <button class="icon-btn" data-act="week-prev" aria-label="${esc(t('Previous week'))}">${icon('chevron-left')}</button>
     <div class="week-label"><b>${esc(fmt(S.week, { day: 'numeric', month: 'short' }))} – ${esc(fmt(end, { day: 'numeric', month: 'short' }))}</b><span>${esc(weekRel())}</span></div>
-    <button class="icon-btn" data-act="week-next" aria-label="${esc(t('Next week'))}">${icon('chevron-right')}</button></div>`;
+    <button class="icon-btn" data-act="week-next" aria-label="${esc(t('Next week'))}">${icon('chevron-right')}</button></div>
+    <div class="week-tools">${seg('weekLayout', [['list', t('List')], ['grid', t('Grid')]], s.weekLayout === 'grid' ? 'grid' : 'list')}</div>`;
   if (!data) return nav + `<div class="pad">${skeleton(6)}</div>`;
+  if (s.weekLayout !== 'grid') return nav + weekList(days, data);
 
   const units = timegridFor(S.week);
   const perDay = days.map((d) => prepareDay(data, d));
@@ -314,12 +316,37 @@ export function viewWeek() {
   ${all.length || hols.length ? '' : `<div class="pad">${emptyState('calendar', t('No lessons this week'))}</div>`}`;
 }
 
+/** Agenda-style week: one card per day with its lessons. */
+function weekList(days, data) {
+  const today = new Date();
+  let i = 0;
+  const html = days.map((d) => {
+    const list = prepareDay(data, d);
+    const hol = holidayFor(d);
+    const real = list.filter((l) => l.code !== 'cancelled');
+    const cancelled = list.length - real.length;
+    return `<div class="wl-day ${sameDay(d, today) ? 'today' : ''}"${stagger(i++)}>
+      <button class="wl-head" data-act="goto-day" data-d="${toUntisDate(d)}">
+        <span class="wl-date"><b>${d.getDate()}</b><span>${esc(fmt(d, { weekday: 'short' }))}</span></span>
+        <span class="wl-sum"><b>${esc(fmt(d, { weekday: 'long' }))}</b><small>${hol && !list.length ? esc(hol.name) : real.length ? `${esc(real.length === 1 ? t('1 lesson') : t('{n} lessons', { n: real.length }))} · ${fmtTime(real[0].start)}–${fmtTime(Math.max(...real.map((l) => l.end)))}` : esc(t('No lessons'))}</small></span>
+        ${cancelled ? `<span class="badge bad">${icon('ban')}${cancelled}</span>` : ''}${hol ? `<span class="badge warn">${icon('sun')}</span>` : ''}${icon('chevron-right', 'row-chev')}
+      </button>
+      ${list.length ? `<div class="wl-lessons">${list.map((l) => `<button class="wl-l ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) && l.code !== 'cancelled' ? 'changed' : ''}" data-act="lesson" data-id="${l.id}" style="--c:${colorFor(subjKey(l))}">
+        <span class="wl-t">${fmtTime(l.start)}</span><i class="wl-bar"></i>
+        <span class="wl-n">${esc(subjName(l))}${l.units > 1 ? ` <em>×${l.units}</em>` : ''}</span>
+        <span class="wl-r">${l.code === 'cancelled' ? `<b class="bad">${esc(t('Cancelled'))}</b>` : roomText(l)}</span>
+      </button>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="pad swipe-area">${html}</div>`;
+}
+
 // ---------------------------------------------------------------- Homework
 export function hwDone(h) { return hwDoneAny(h.key ? h : { ...h, key: `u${h.id}`, source: 'untis' }); }
 
 const SRC_ICON = { untis: '', mine: 'user', iserv: 'school' };
 export function viewTasks() {
-  const chips = [['open', t('To do')], ['done', t('Done')], ['all', t('All')]].map(([f, label]) => `<button class="chip ${S.hwFilter === f ? 'on' : ''}" data-act="hw-filter" data-f="${f}">${esc(label)}</button>`).join('');
+  const chips = seg('hwFilter', [['open', t('To do')], ['done', t('Done')], ['all', t('All')]], S.hwFilter, 'hw-filter');
   const fab = `<button class="fab" data-act="hw-add" aria-label="${esc(t('Add homework'))}">${icon('plus')}</button>`;
   const all = allHomework();
   if (!S.homework && !all.length) return `<div class="chips">${chips}</div><div class="pad">${skeleton(4)}${fab}</div>`;

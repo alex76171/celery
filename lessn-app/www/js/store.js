@@ -30,6 +30,7 @@ export const DEFAULTS = {
   aiLang: 'auto',
   keepAudio: false,
   weekDays: 'auto', // auto | 5 | 6 | 7
+  weekLayout: 'list', // list | grid
   autoRefresh: true,
   // Customization (only reachable through the hidden panel)
   theme: 'auto', // auto | material-light | material-dark | glass-light | glass-dark | amoled
@@ -66,7 +67,7 @@ export const store = {
   saveSettings: (s) => write('settings', s),
   resetCustomization: () => {
     const s = store.settings();
-    const keys = ['tabs', 'onboarded', 'lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
+    const keys = ['weekLayout', 'tabs', 'onboarded', 'lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
       'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiLang', 'keepAudio'];
     const keep = Object.fromEntries(keys.map((k) => [k, s[k]]));
     write('settings', keep);

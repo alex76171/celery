@@ -1,6 +1,6 @@
 // Custom IServ screens: hub, messenger, mail, files, calendar and notifications.
 import {
-  S, t, $, esc, icon, fmt, relDay, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, toast, haptic, hash,
+  seg, S, t, $, esc, icon, fmt, relDay, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, toast, haptic, hash,
   PALETTE, isDark, sameDay, daysBetween, startOfDay,
 } from './core.js';
 import { native } from './native.js';
@@ -67,8 +67,8 @@ export function viewIServHub() {
       <div class="is-hero-text"><b>IServ</b><small>${esc(acc.username)} · ${esc(acc.host)}</small></div>
       <button class="icon-btn" data-act="iserv-open" data-path="" aria-label="${esc(t('Open IServ website'))}">${icon('external-link')}</button>
     </div>
-    <div class="is-grid">${tiles.map(([v, ic, label, n], i) => `<button class="is-tile" data-act="${v.startsWith('web:') ? 'iserv-open' : 'nav'}" data-view="${v}" data-path="${v.startsWith('web:') ? v.slice(4) : ''}"${stagger(i + 1)}>
-      <span class="is-tile-ic">${icon(ic)}${n ? `<em>${n > 99 ? '99+' : n}</em>` : ''}</span><b>${esc(label)}</b></button>`).join('')}</div>
+    <div class="card list-card"${stagger(1)}>${tiles.map(([v, ic, label, n]) => `<button class="row" data-act="${v.startsWith('web:') ? 'iserv-open' : 'nav'}" data-view="${v}" data-path="${v.startsWith('web:') ? v.slice(4) : ''}">
+      <span class="row-ic tint" style="--c:${PALETTE[hash(v) % PALETTE.length]}">${icon(ic)}</span><span class="row-text"><b>${esc(label)}</b></span>${n ? `<em class="count">${n > 99 ? '99+' : n}</em>` : ''}${icon(v.startsWith('web:') ? 'external-link' : 'chevron-right', 'row-chev')}</button>`).join('')}</div>
     ${recent.length ? `<div class="section-title">${icon('bell')}${esc(t('Latest'))}</div><div class="card">${recent.map((n) => noteRow(n)).join('')}</div>` : ''}
     ${(I.rooms || []).filter((r) => r.unread).slice(0, 3).length ? `<div class="section-title">${icon('message-square')}${esc(t('Unread chats'))}</div><div class="card">${I.rooms.filter((r) => r.unread).slice(0, 3).map(roomRow).join('')}</div>` : ''}
     <div class="card" style="margin-top:16px"><button class="row danger" data-act="iserv-logout"><span class="row-ic">${icon('log-out')}</span><span class="row-text"><b>${esc(t('Disconnect IServ'))}</b></span></button></div>
@@ -314,7 +314,7 @@ const folderName = (f) => ({ INBOX: t('Inbox'), 'INBOX/Sent': t('Sent'), Sent: t
 export function viewMail() {
   if (!I.mail) { if (!I.error.mail && !S.loading) loadMail(); return `<div class="pad">${errBox('mail', 'is-mail-retry') || skeleton(6)}</div>`; }
   const folders = (I.folders || []).slice(0, 12);
-  return `${folders.length > 1 ? `<div class="chips scroll">${folders.map((f) => `<button class="chip ${f.path === I.folder ? 'on' : ''}" data-act="mail-folder" data-f="${esc(f.path)}">${esc(folderName(f))}${f.unread ? ` <em>${f.unread}</em>` : ''}</button>`).join('')}</div>` : ''}
+  return `${folders.length > 1 ? `<div class="chips">${seg('mailFolder', folders.map((f) => [f.path, `${folderName(f)}${f.unread ? ` (${f.unread})` : ''}`]), I.folder, 'mail-folder')}</div>` : ''}
   <div class="pad">
     ${I.mail.length ? `<div class="card">${I.mail.map((m, i) => `<button class="mail-row ${m.seen ? '' : 'unread'}" data-act="open-mail" data-i="${i}">
       ${avatar(m.from || '?')}

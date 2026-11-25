@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.2.2';
+export const VERSION = '2.3.0';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -51,7 +51,7 @@ export function t(str, vars) {
   if (vars) out = out.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''));
   return out;
 }
-const LOCALES = { en: 'en-GB', de: 'de-DE', tr: 'tr-TR', fr: 'fr-FR' };
+const LOCALES = { en: 'en-GB', de: 'de-DE', tr: 'tr-TR', fr: 'fr-FR', es: 'es-ES', pl: 'pl-PL', ru: 'ru-RU', uk: 'uk-UA', ar: 'ar' };
 export const locale = () => LOCALES[S.settings.lang] || navigator.language || 'en';
 export const fmt = (d, o) => d.toLocaleDateString(locale(), o);
 
@@ -135,6 +135,7 @@ export function toast(msg, kind = '') {
 export const THEMES = [
   ['auto', 'Auto'], ['material-light', 'Material Light'], ['material-dark', 'Material Dark'],
   ['glass-light', 'Liquid Glass Light'], ['glass-dark', 'Liquid Glass Dark'], ['amoled', 'Black'],
+  ['oneui-light', 'One UI Light'], ['oneui-dark', 'One UI Dark'],
   ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'], ['paper', 'Paper'], ['neon', 'Neon'], ['pastel', 'Pastel'],
 ];
 // family = surface style, motion = how screens animate in, font = default font of the theme
@@ -144,6 +145,8 @@ const THEME_META = {
   'glass-light': { family: 'glass', motion: 'blur', font: 'inter' },
   'glass-dark': { family: 'glass', motion: 'blur', font: 'inter', dark: true },
   amoled: { family: 'material', motion: 'fade', font: 'system', dark: true },
+  'oneui-light': { family: 'oneui', motion: 'spring', font: 'system' },
+  'oneui-dark': { family: 'oneui', motion: 'spring', font: 'system', dark: true },
   sunset: { family: 'glass', motion: 'bloom', font: 'outfit' },
   ocean: { family: 'glass', motion: 'wave', font: 'outfit', dark: true },
   forest: { family: 'material', motion: 'grow', font: 'nunito', dark: true },
@@ -176,6 +179,7 @@ export function applyTheme() {
   root.dataset.font = !s.font || s.font === 'theme' ? meta.font : s.font;
   root.dataset.anim = s.animations ? '1' : '0';
   root.lang = s.lang;
+  root.dir = s.lang === 'ar' ? 'rtl' : 'ltr';
   root.style.setProperty('--accent', s.accent);
   root.style.setProperty('--r', `${s.radius}px`);
   root.style.fontSize = `${16 * s.fontScale}px`;
@@ -226,8 +230,17 @@ export const skeleton = (n = 5) => `<div class="skel-list">${Array.from({ length
 export function row(act, ic, title, sub = '', extra = '', right = '') {
   return `<button class="row" data-act="${act}" ${extra}><span class="row-ic">${icon(ic)}</span><span class="row-text"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${right}${icon('chevron-right', 'row-chev')}</button>`;
 }
+/** A dropdown (native picker) used for every "pick one" setting. */
 export function seg(key, options, value, act = 'set') {
-  return `<div class="seg" data-key="${key}">${options.map(([v, label]) => `<button class="${String(value) === String(v) ? 'on' : ''}" data-act="${act}" data-key="${key}" data-val="${esc(v)}">${esc(label)}</button>`).join('')}</div>`;
+  const cur = options.find(([v]) => String(v) === String(value)) || options[0];
+  return `<label class="dd"><span class="dd-text">${esc(cur ? cur[1] : '')}</span>${icon('chevron-down', 'dd-ic')}<select data-dd="${act}" data-key="${key}">${options.map(([v, l]) => `<option value="${esc(v)}" ${String(value) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+}
+/** A settings row with a label on the left and a dropdown value on the right. */
+export function dd(label, key, options, value, { sub = '', act = 'set', ic = '' } = {}) {
+  const cur = options.find(([v]) => String(v) === String(value)) || options[0];
+  return `<label class="row dd-row">${ic ? `<span class="row-ic">${icon(ic)}</span>` : ''}<span class="row-text"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+    <span class="dd-val">${esc(cur ? cur[1] : '')}</span>${icon('chevrons-up-down', 'dd-ic')}
+    <select data-dd="${act}" data-key="${key}" aria-label="${esc(label)}">${options.map(([v, l]) => `<option value="${esc(v)}" ${String(value) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
 }
 export function toggle(key, label, sub = '', act = 'toggle') {
   const on = !!S.settings[key];

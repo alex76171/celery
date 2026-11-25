@@ -170,6 +170,7 @@ function bindGestures(main) {
   let x0 = 0; let y0 = 0; let pulling = false; let tracking = false; let horiz = null;
   const ptr = $('#ptr');
   const content = $('#content');
+  main.addEventListener('scroll', () => { $('#app')?.classList.toggle('scrolled', main.scrollTop > 28); }, { passive: true });
   main.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
     tracking = true; horiz = null;
@@ -329,6 +330,8 @@ function onClick(e) {
     case 'ai-new': A.newChat(); break;
     case 'ai-open': A.openChat(d.id); break;
     case 'ai-starter': A.sendAI(d.text); break;
+    case 'ai-prompt': A.sendAI(d.text); break;
+    case 'ai-photo': $('#ai-file')?.click(); break;
     case 'ai-unattach': A.unattach(Number(d.i)); break;
     case 'exam-open': { const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.openExam(e); break; }
     case 'ai-exam': { const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.chatForExam(e); break; }
@@ -443,6 +446,22 @@ function boot() {
   document.addEventListener('click', (e) => { if (S.api) onClick(e); });
   document.addEventListener('input', (e) => { if (S.api) onInput(e); });
   document.addEventListener('change', (e) => { if (S.api && e.target.type === 'color' && sheetState) rerenderSheet(); });
+  document.addEventListener('change', (e) => {
+    const sel = e.target.closest?.('select[data-dd]');
+    if (!sel || !S.api) return;
+    const v = sel.value;
+    const txt = sel.closest('label')?.querySelector('.dd-val, .dd-text');
+    if (txt) txt.textContent = sel.selectedOptions[0]?.textContent || '';
+    haptic();
+    switch (sel.dataset.dd) {
+      case 'set': setSetting(sel.dataset.key, v); break;
+      case 'g-weight': S.gradeWeight = v; break;
+      case 'hw-filter': S.hwFilter = v; S.anim = 'fade'; render(); break;
+      case 'mail-folder': IS.setFolder(v); break;
+      case 'browse-kind': openBrowse.setKind(v); break;
+      default:
+    }
+  });
   document.addEventListener('submit', (e) => {
     if (!S.api) return;
     if (e.target.id === 'composer') { e.preventDefault(); IS.sendMessage(); }

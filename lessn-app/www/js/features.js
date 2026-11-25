@@ -1,6 +1,6 @@
 // Menu hub, Grades, Attendance, IServ, Lesson recorder (beta), Settings and the hidden Customize panel.
 import {
-  S, t, esc, icon, fmt, fmtTime, relDay, inDays, sameDay, addDays, startOfDay, daysBetween, toUntisDate, fromUntisDate, pad,
+  dd, S, t, esc, icon, fmt, fmtTime, relDay, inDays, sameDay, addDays, startOfDay, daysBetween, toUntisDate, fromUntisDate, pad,
   subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge, stagger, row, seg, toggle, openSheet, closeSheet,
   rerenderSheet, toast, haptic, THEMES, FONTS, VERSION, currentTheme, isDark, nowMin, subjKey, subjName, durText,
 } from './core.js';
@@ -29,17 +29,16 @@ export function viewMore() {
   ];
   return `<div class="pad">
     <div class="account"${stagger(0)}><div class="avatar">${icon('user')}</div><div><b>${esc(a.username)}</b><small>${esc(a.schoolName || a.school)}</small></div></div>
-    <div class="tiles">${tiles.map(([view, ic, label, tag, act], i) => `<button class="tile" data-act="${act}" data-view="${view}"${stagger(i + 1)}>
-      <span class="tile-ic">${icon(ic)}</span><b>${esc(label)}</b>${tag ? `<em>${tag}</em>` : ''}</button>`).join('')}</div>
+    <div class="section-title">${esc(t('More'))}</div>
+    <div class="card list-card"${stagger(1)}>${tiles.map(([view, ic, label, tag, act]) => `<button class="row" data-act="${act}" data-view="${view}">
+      <span class="row-ic tint" style="--c:${PALETTE[hash(view) % PALETTE.length]}">${icon(ic)}</span><span class="row-text"><b>${esc(label)}</b></span>${tag ? `<em class="tag">${tag}</em>` : ''}${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>
     <div class="section-title">${esc(t('Settings'))}</div>
     <div class="card">
-      <div class="row static"><span class="row-text"><b>${esc(t('Language'))}</b></span></div>
-      <div class="row-pad">${seg('lang', Object.entries(LANGS), s.lang)}</div>
+      ${dd(t('Language'), 'lang', Object.entries(LANGS), s.lang)}
       ${row('tabs-edit', 'layout-grid', t('Tabs'), userTabs().map((k) => t(TAB_DEFS[k].label)).join(' · '))}
       ${row('setup-ai', 'sparkles', t('AI helper'), store.aiKey() ? t('Connected') : t('Not set up'))}
       ${row('setup-iserv', 'school', 'IServ', store.iserv()?.host || t('Not set up'))}
-      <div class="row static"><span class="row-text"><b>${esc(t('Days per week'))}</b></span></div>
-      <div class="row-pad">${seg('weekDays', [['auto', t('Auto')], ['5', '5'], ['6', '6'], ['7', '7']], s.weekDays)}</div>
+      ${dd(t('Days per week'), 'weekDays', [['auto', t('Auto')], ['5', '5'], ['6', '6'], ['7', '7']], s.weekDays)}
       ${toggle('autoRefresh', t('Refresh on open'), t('Update when you return to the app'))}
     </div>
     <div class="section-title">${esc(t('Offline'))}</div>
@@ -174,8 +173,7 @@ export function viewAttendance() {
       ${s.presenceCheck || s.schoolLoc ? `
       <div class="row static"><span class="row-ic">${icon('map-pin')}</span><span class="row-text"><b>${esc(t('School location'))}</b><small>${s.schoolLoc ? `${s.schoolLoc.lat.toFixed(4)}, ${s.schoolLoc.lng.toFixed(4)}` : esc(t('Not set yet'))}</small></span></div>
       <div class="row-pad"><button class="btn small ghost" data-act="set-school-loc">${icon('locate-fixed')}${esc(t("I'm at school now, use my location"))}</button></div>
-      <div class="row static"><span class="row-text"><b>${esc(t('School area radius'))}</b></span></div>
-      <div class="row-pad">${seg('presenceRadius', [['150', '150 m'], ['250', '250 m'], ['400', '400 m'], ['700', '700 m']], s.presenceRadius)}</div>
+      ${dd(t('School area radius'), 'presenceRadius', [['150', '150 m'], ['250', '250 m'], ['400', '400 m'], ['700', '700 m']], s.presenceRadius)}
       ${row('check-now', 'radar', t('Check now'))}` : ''}
     </div>
     <div class="cal"${stagger(1)}>
@@ -279,8 +277,7 @@ export function viewRecorder() {
     </div>
     ${busy ? `<div class="processing">${icon('sparkles', 'spin-slow')}<span>${esc(busy)}</span></div>` : ''}
     <div class="card"${stagger(3)}>
-      <div class="row static"><span class="row-text"><b>${esc(t('Summary language'))}</b><small>${esc(t('The lesson audio can be German, the summary can be in any of these'))}</small></span></div>
-      <div class="row-pad">${seg('aiLang', [['auto', t('App language')], ['de', 'Deutsch'], ['en', 'English']], S.settings.aiLang)}</div>
+      ${dd(t('Summary language'), 'aiLang', [['auto', t('App language')], ...Object.entries(LANGS)], S.settings.aiLang, { sub: t('The lesson audio can be German, the summary can be in any of these') })}
       ${toggle('keepAudio', t('Keep audio after summary'))}
       ${key ? row('ai-clearkey', 'key-round', t('Remove API key')) : ''}
     </div>
@@ -392,7 +389,7 @@ export async function openNotifSettings() {
   openSheet(() => `<h2 class="sheet-title">${icon('bell')}${esc(t('Notifications'))}</h2>
     <div class="card">
       ${toggle('notifyLessons', t('Lesson reminders'), t('A notification before each lesson'), 'notif-toggle')}
-      ${s.notifyLessons ? `<div class="row-pad">${seg('notifyMinutes', [['2', '2 min'], ['5', '5 min'], ['10', '10 min'], ['15', '15 min']], s.notifyMinutes)}</div>` : ''}
+      ${s.notifyLessons ? dd(t('Remind me'), 'notifyMinutes', [['2', '2 min'], ['5', '5 min'], ['10', '10 min'], ['15', '15 min']], s.notifyMinutes) : ''}
       ${toggle('notifyChanges', t('Change alerts'), t('Cancelled lessons, substitutions and room changes'), 'notif-toggle')}
     </div>
     ${store.iserv() ? `<div class="section-title">${icon('school')}IServ</div><div class="card">${toggle('iservNotify', t('IServ notifications'), t('New messages and IServ notifications, checked every 15 minutes'), 'iserv-notify')}</div>` : ''}
@@ -454,7 +451,7 @@ export function openBrowse() {
     return f.length ? `<div class="card">${f.map((x) => `<button class="row" data-act="pick-element" data-id="${x.id}" data-type="${x.type}" data-label="${esc(x.name)}"><span class="row-ic">${icon({ classes: 'users', teachers: 'user', rooms: 'door-open' }[kind])}</span><span class="row-text"><b>${esc(x.name)}</b>${x.long && x.long !== x.name ? `<small>${esc(x.long)}</small>` : ''}</span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : emptyState('search', t('No matches'));
   };
   openSheet(() => `<h2 class="sheet-title">${esc(t('Other timetables'))}</h2>
-      <div class="seg wide">${[['classes', t('Classes')], ['teachers', t('Teachers')], ['rooms', t('Rooms')]].map(([k, label]) => `<button class="${kind === k ? 'on' : ''}" data-act="browse-kind" data-k="${k}">${esc(label)}</button>`).join('')}</div>
+      <div class="card">${dd(t('Show'), 'browse-kind', [['classes', t('Classes')], ['teachers', t('Teachers')], ['rooms', t('Rooms')]], kind, { act: 'browse-kind', ic: 'users' })}</div>
       <label class="search">${icon('search')}<input id="browse-q" placeholder="${esc(t('Search'))}" value="${esc(q)}" autocomplete="off"></label>
       <div id="browse-list">${listHtml()}</div>`, { full: true });
   load();
@@ -498,7 +495,11 @@ export function openCustomize() {
     const cur = st.theme === 'system' ? 'auto' : st.theme;
     return `<h2 class="sheet-title">${icon('paintbrush')}${esc(t('Customize'))}</h2>
     <div class="section-title">${esc(t('Theme'))}</div>
-    <div class="themes">${THEMES.map(([id, label]) => `<button class="theme-card ${cur === id ? 'on' : ''}" data-act="set" data-key="theme" data-val="${id}"><span class="tp tp-${id}"><i></i><i></i><i></i></span><b>${esc(t(label))}</b></button>`).join('')}</div>
+    <div class="card">
+      <div class="theme-preview"><span class="tp tp-${cur}"><i></i><i></i><i></i></span></div>
+      ${dd(t('Theme'), 'theme', THEMES.map(([id, label]) => [id, t(label)]), cur, { ic: 'palette' })}
+      ${dd(t('Font'), 'font', FONTS.map(([id, label]) => [id, t(label)]), st.font || 'theme', { ic: 'type' })}
+    </div>
     <div class="section-title">${esc(t('Appearance'))}</div>
     <div class="card">
       <div class="row static"><span class="row-text"><b>${esc(t('Accent color'))}</b></span></div>
@@ -508,12 +509,9 @@ export function openCustomize() {
       <div class="row-pad"><input type="range" min="0" max="28" step="1" value="${st.radius}" data-key="radius"></div>
       <div class="row static"><span class="row-text"><b>${esc(t('Text size'))}</b><small id="v-fontScale">${Math.round(st.fontScale * 100)}%</small></span></div>
       <div class="row-pad"><input type="range" min="0.85" max="1.25" step="0.05" value="${st.fontScale}" data-key="fontScale"></div>
-      <div class="row static"><span class="row-text"><b>${esc(t('Font'))}</b></span></div>
-      <div class="row-pad font-list">${FONTS.map(([id, label]) => `<button class="font-chip ${(st.font || 'theme') === id ? 'on' : ''}" data-act="set" data-key="font" data-val="${id}" style="font-family:${FONT_CSS[id] || 'inherit'}">${esc(t(label))}</button>`).join('')}</div>
-      <div class="row static"><span class="row-text"><b>${esc(t('Density'))}</b></span></div>
-      <div class="row-pad">${seg('density', [['comfortable', t('Comfortable')], ['compact', t('Compact')]], st.density)}</div>
-      <div class="row static"><span class="row-text"><b>${esc(t('Lesson colors'))}</b></span></div>
-      <div class="row-pad">${seg('colorMode', [['subject', t('Per subject')], ['accent', t('Accent')], ['mono', t('Neutral')]], st.colorMode)}</div>
+
+      ${dd(t('Density'), 'density', [['comfortable', t('Comfortable')], ['compact', t('Compact')]], st.density)}
+      ${dd(t('Lesson colors'), 'colorMode', [['subject', t('Per subject')], ['accent', t('Accent')], ['mono', t('Neutral')]], st.colorMode)}
       ${toggle('animations', t('Animations'))}
     </div>
     <div class="section-title">${esc(t('Timetable'))}</div>
