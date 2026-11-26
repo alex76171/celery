@@ -64,6 +64,7 @@ function onHubEvent(ev) {
 
 export async function syncNow(quiet = false) {
   if (!linked() || S.settings.pcSync === false || L.syncing) return;
+  try { if (!(await import('./profiles.js')).isPrimaryProfile()) return; } catch { /* single account */ }
   L.syncing = true;
   try {
     const changed = await syncOnce(api, { secrets: S.settings.pcSyncSecrets !== false });

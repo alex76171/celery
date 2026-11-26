@@ -1,5 +1,6 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
-import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect, toggle, stagger, openMenu } from './core.js';
+import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect, toggle, stagger, openMenu, FONTS } from './core.js';
+import { TAB_DEFS } from './assist.js';
 import { PROVIDERS, listModels, catalog, priceOf, complete, linkedAIs, aiFor, aiConfig } from './ai.js';
 import { native, hasNative } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
@@ -65,10 +66,14 @@ function aiForm() {
     <div class="card">
       ${dd(t('AI provider'), 'ai-provider', Object.entries(PROVIDERS).filter(([id]) => id !== 'pc' || AIS.provider === 'pc').map(([id, x]) => [id, x.name]), AIS.provider, { act: 'ai-provider', ic: 'sparkles' })}
     </div>
-    ${p.keyUrl ? `<button class="btn small ghost" data-act="ai-getkey">${icon('external-link')}${esc(t('Get a key'))} · ${esc(new URL(p.keyUrl).hostname)}</button>` : ''}
+    ${!AIS.mode && !linkedAIs().length ? `<button class="free-ai" data-act="ai-free-now"><span class="fa-ic">${icon('gift')}</span><span><b>${esc(t('Start for free, no key'))}</b><small>${esc(t('Works right away. You can add other AIs any time.'))}</small></span>${icon('chevron-right', 'row-chev')}</button>
+      <div class="or-line"><span>${esc(t('or choose an AI'))}</span></div>` : ''}
+    ${p.oauth ? `<button class="btn signin-btn" data-act="ai-oauth">${icon('log-in')}${esc(t('Sign in with OpenRouter'))}</button><p class="hint center">${esc(t('No key to copy: sign in or create a free account. Free models cost nothing.'))}</p>` : ''}
+    ${p.noKey ? `<div class="notice ok">${icon('circle-check')}<span>${esc(t('Free and no account needed. Answers can be slower and less private than with your own key.'))}</span></div>` : ''}
+    ${p.keyUrl && !p.noKey ? `<button class="btn small ghost" data-act="ai-getkey">${icon('external-link')}${esc(p.oauth ? t('Or paste a key') : t('Get a key'))} · ${esc(new URL(p.keyUrl).hostname)}</button>` : ''}
     ${AIS.provider === 'custom' ? `<label class="lbl">${esc(t('Server address'))}</label>
       <label class="input">${icon('server')}<input id="setup-base" placeholder="https://api.example.com/v1" value="${esc(S.settings.aiBaseUrl || '')}" autocapitalize="off" autocorrect="off"></label>` : ''}
-    ${AIS.provider === 'pc' ? `<input id="setup-key" type="hidden" value="${esc(store.aiKey('pc'))}"><p class="hint">${icon('monitor', 'mini')} ${esc(t('Runs on your paired PC. Free and private.'))}</p>` : `<label class="lbl">${esc(t('API key'))}</label>
+    ${p.noKey ? `<input id="setup-key" type="hidden" value="">` : AIS.provider === 'pc' ? `<input id="setup-key" type="hidden" value="${esc(store.aiKey('pc'))}"><p class="hint">${icon('monitor', 'mini')} ${esc(t('Runs on your paired PC. Free and private.'))}</p>` : `<label class="lbl">${esc(t('API key'))}</label>
     <label class="input">${icon('key-round')}<input id="setup-key" type="password" placeholder="${esc(p.placeholder)}" value="${esc(store.aiKey(AIS.provider))}" autocomplete="off"></label>`}
     <label class="lbl">${esc(t('Model'))}</label>
     <div class="model-row">
@@ -162,8 +167,8 @@ export async function saveAISetup() {
   const key = $('#setup-key')?.value.trim();
   const base = ($('#setup-base')?.value || '').trim().replace(/\/+$/, '');
   const model = ($('#setup-model')?.value || '').trim();
-  if (!key) { closeSheet(); return; }
   const prov = AIS.provider;
+  if (!key && !PROVIDERS[prov].noKey) { closeSheet(); return; }
   const config = { provider: prov, p: PROVIDERS[prov], key, model: model || PROVIDERS[prov].model, base: prov === 'custom' ? base : prov === 'pc' ? aiConfig('pc').base : PROVIDERS[prov].base };
   if (!config.model || (prov === 'custom' && !base)) { AIS.error = t('Fill in the server address and model.'); keepAi(rerenderSheet); return; }
   AIS.testing = true; AIS.error = ''; keepAi(rerenderSheet);
@@ -174,7 +179,7 @@ export async function saveAISetup() {
     return;
   }
   AIS.testing = false;
-  store.setAiKey(key, prov);
+  if (PROVIDERS[prov].noKey) S.settings[`aiOn_${prov}`] = true; else store.setAiKey(key, prov);
   const defLinked = linkedAIs().some((c) => c.provider === S.settings.aiProvider && c.provider !== prov);
   if (!AIS.mode || !defLinked) S.settings.aiProvider = prov;
   S.settings.aiModels = { ...(S.settings.aiModels || {}), [prov]: config.model };
@@ -255,8 +260,86 @@ export function maybeRunSetup() {
   if (S.settings.onboarded) return;
   S.settings.onboarded = true;
   store.saveSettings(S.settings);
-  setTimeout(() => openAISetup(() => setTimeout(() => { if (!store.iserv()) openIServSetup(); }, 350)), 900);
+  setTimeout(() => openWizard(() => setTimeout(() => openAISetup(() => setTimeout(() => { if (!store.iserv()) openIServSetup(() => setTimeout(pcStep, 350)); else pcStep(); }, 350)), 350)), 900);
 }
+
+// ---------------------------------------------------------------- setup wizard: look, tabs, notifications
+const WZ = { step: 0, next: null };
+const QUICK_THEMES = [['auto', 'Auto', '#f4f5f8', '#15161e'], ['material-light', 'Material', '#f6f7fa', '#4f6bff'], ['material-dark', 'Material Dark', '#0f1015', '#4f6bff'], ['glass-light', 'Liquid Glass', '#e9eefc', '#7aa2ff'], ['glass-dark', 'Glass Dark', '#141726', '#8ea6ff'],
+  ['oneui-light', 'One UI', '#f4f4f6', '#3e91ff'], ['ios-light', 'iOS', '#f2f2f7', '#007aff'], ['windows-light', 'Windows 11', '#f3f3f3', '#0067c0'], ['windows-dark', 'Windows Dark', '#202020', '#4cc2ff'], ['amoled', 'Black', '#000', '#4f6bff'], ['sunset', 'Sunset', '#fff4ec', '#f97316'],
+  ['ocean', 'Ocean', '#06182a', '#38bdf8'], ['forest', 'Forest', '#0f1a14', '#4ade80'], ['mocha', 'Mocha', '#1e1e2e', '#cba6f7'], ['nord', 'Nord', '#2e3440', '#88c0d0'], ['lavender', 'Lavender', '#f5f2ff', '#8e4ec6'], ['neon', 'Neon', '#0b0614', '#e879f9']];
+const ACCENTS = ['#4f6bff', '#0090ff', '#12a594', '#30a46c', '#f59e0b', '#f76b15', '#e5484d', '#d6409f', '#8e4ec6', '#6e56cf'];
+export function openWizard(next) {
+  WZ.step = 0; WZ.next = next;
+  openSheet(wizardHtml, { full: true, onClose: () => { const n = WZ.next; WZ.next = null; n?.(); } });
+}
+function wizardHtml() {
+  const s = S.settings;
+  const dots = `<div class="wz-dots">${[0, 1, 2].map((i) => `<i class="${i === WZ.step ? 'on' : i < WZ.step ? 'done' : ''}"></i>`).join('')}</div>`;
+  const nav = `<div class="wz-nav"><button class="link" data-act="wz-skip">${esc(t('Skip'))}</button><button class="btn" data-act="wz-next">${esc(WZ.step < 2 ? t('Next') : t('Done'))}${icon('chevron-right')}</button></div>`;
+  if (WZ.step === 0) {
+    return `<div class="setup wz">${dots}<div class="setup-orb">${icon('palette')}</div><h2>${esc(t('Make it yours'))}</h2><p>${esc(t('Pick a look. You can change everything later (long-press the title).'))}</p>
+      <div class="wz-themes">${QUICK_THEMES.map(([id, name, bg, ac]) => `<button class="wz-theme ${s.theme === id ? 'on' : ''}" data-act="wz-theme" data-v="${id}" style="--tb:${bg};--ta:${ac}"><span class="tc-prev"><i></i><i></i><i></i></span><b>${esc(t(name))}</b></button>`).join('')}</div>
+      <label class="lbl">${esc(t('Accent color'))}</label>
+      <div class="accent-row">${ACCENTS.map((c) => `<button class="acc ${s.accent === c ? 'on' : ''}" data-act="wz-accent" data-v="${c}" style="--c:${c}" aria-label="${c}"></button>`).join('')}</div>
+      <div class="card">${dd(t('Font'), 'font', FONTS.map(([k, l]) => [k, t(l)]), s.font || 'theme', { ic: 'type' })}${dd(t('Text size'), 'fontScale', [['0.9', t('Small')], ['1', t('Normal')], ['1.1', t('Large')], ['1.2', t('Extra large')]], String(s.fontScale), { ic: 'a-large-small' })}${toggle('animations', t('Animations'), t('Smooth motion everywhere'))}</div>
+      ${nav}</div>`;
+  }
+  if (WZ.step === 1) {
+    const tabs = S.settings.tabs || ['today', 'week', 'tasks', 'exams'];
+    return `<div class="setup wz">${dots}<div class="setup-orb">${icon('layout-grid')}</div><h2>${esc(t('Your tabs'))}</h2><p>${esc(t('Pick up to 4 tabs for the bottom bar. Everything else is in the menu.'))}</p>
+      <div class="tab-pick">${Object.entries(TAB_DEFS).map(([k, d]) => `<button class="tp ${tabs.includes(k) ? 'on' : ''}" data-act="wz-tab" data-v="${k}">${icon(d.icon)}<span>${esc(t(d.label))}</span>${tabs.includes(k) ? `<em>${tabs.indexOf(k) + 1}</em>` : ''}</button>`).join('')}</div>
+      <div class="card">${dd(t('Start screen'), 'startView', tabs.map((k) => [k, t(TAB_DEFS[k]?.label || k)]), s.startView || tabs[0], { ic: 'house' })}${dd(t('Timetable view'), 'weekLayout', [['list', t('List')], ['grid', t('Grid')]], s.weekLayout || 'list', { ic: 'calendar-range' })}</div>
+      ${nav}</div>`;
+  }
+  return `<div class="setup wz">${dots}<div class="setup-orb">${icon('bell')}</div><h2>${esc(t('Stay up to date'))}</h2><p>${esc(t('Choose what Lessn should tell you. Nothing is sent anywhere.'))}</p>
+    <div class="card">
+      ${toggle('notifyLessons', t('Lesson reminders'), t('A notification before each lesson'))}
+      ${toggle('notifyChanges', t('Change alerts'), t('Cancelled lessons, substitutions and room changes'))}
+      ${toggle('studyCheckins', t('Ask if I have studied'), t('Before each exam or test, with help from the AI if not yet'))}
+      ${toggle('recAsk', t('Ask before each lesson if I want to record'), t('The AI then writes down homework and tests'))}
+      ${toggle('aiHolidayNames', t('Nicer holiday names'), t('The AI names holidays properly'))}
+      ${toggle('dndLessons', t('Do not disturb during lessons'), t('Turns on when a lesson starts and off when it ends'))}
+    </div>
+    ${nav}</div>`;
+}
+export async function wizardAct(act, v) {
+  const s = S.settings;
+  if (act === 'wz-theme') { s.theme = v; store.saveSettings(s); applyThemeNow(); }
+  if (act === 'wz-accent') { s.accent = v; store.saveSettings(s); applyThemeNow(); }
+  if (act === 'wz-tab') {
+    let tabs = [...(s.tabs || ['today', 'week', 'tasks', 'exams'])];
+    if (!tabs.includes(v) && tabs.length >= 4) { toast(t('Remove a tab first to add another one.')); return; }
+    tabs = tabs.includes(v) ? tabs.filter((x) => x !== v) : [...tabs, v];
+    if (!tabs.length) tabs = ['today'];
+    s.tabs = tabs; store.saveSettings(s);
+    const nav = document.querySelector('nav.tabs');
+    if (nav) import('./app.js').then((m) => m.refreshNav?.());
+  }
+  if (act === 'wz-next') {
+    if (WZ.step === 2) {
+      if (hasNative() && (s.notifyLessons || s.notifyChanges || s.studyCheckins || s.recAsk)) await native.request(['notifications', ...(s.recAsk ? ['microphone'] : [])]).catch(() => {});
+      if (s.dndLessons && hasNative()) { const st = await native.status(); if (!st.dnd) native.openDndSettings().catch(() => {}); }
+      import('./data.js').then((m) => m.scheduleNative());
+      closeSheet();
+      return;
+    }
+    WZ.step++;
+  }
+  if (act === 'wz-skip') { closeSheet(); return; }
+  const b = $('.sheet-body');
+  if (b) { b.innerHTML = wizardHtml(); b.scrollTop = 0; }
+}
+function applyThemeNow() { import('./core.js').then((m) => { m.applyTheme(); }); }
+/** Last step on the phone: Lessn on the PC. */
+function pcStep() {
+  if (window.Capacitor?.isDesktop) return;
+  openSheet(() => `<div class="setup"><div class="setup-orb">${icon('monitor')}</div><h2>${esc(t('Lessn on your PC too?'))}</h2>
+    <p>${esc(t('Install Lessn for Windows to see everything on a big screen, open your PC\'s files on the phone and use free local AI. Your data syncs by itself.'))}</p>
+    <button class="btn" data-act="nav" data-view="pc">${icon('monitor')}${esc(t('Connect my PC'))}</button>
+    <button class="link center" data-act="close-sheet">${esc(t('Maybe later'))}</button></div>`);
+}
+
 
 // ---------------------------------------------------------------- "AI helpers" screen: every linked AI
 const shortName = (c) => c.p.name.replace(/ \(.*\)$/, '');
@@ -299,8 +382,50 @@ export function aiRowMenu(anchor, provider) {
 }
 export function unlinkAI(provider) {
   store.setAiKey('', provider);
+  S.settings[`aiOn_${provider}`] = false;
   for (const f of ['ai_chat', 'ai_plan', 'ai_files', 'ai_summary']) if (S.settings[f] === provider) S.settings[f] = '';
   if (S.settings.aiProvider === provider) S.settings.aiProvider = linkedAIs()[0]?.provider || 'gemini';
   store.saveSettings(S.settings);
   render();
+}
+
+// ---------------------------------------------------------------- "Sign in with OpenRouter" (OAuth PKCE, no key copying)
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export async function openRouterSignIn() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  const callback = 'http://localhost:3000/oauth';
+  AIS.error = ''; AIS.testing = true; keepAi(rerenderSheet);
+  try {
+    const wait = native.oauthListen({ port: 3000, timeout: 300000 });
+    await native.openUrl(`https://openrouter.ai/auth?callback_url=${encodeURIComponent(callback)}&code_challenge=${challenge}&code_challenge_method=S256`);
+    const { path } = await wait;
+    const code = new URL(path, 'http://x').searchParams.get('code');
+    if (!code) throw new Error(t('Sign-in was cancelled.'));
+    const r = await fetch('https://openrouter.ai/api/v1/auth/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: 'S256' }) });
+    const j = await r.json().catch(() => ({}));
+    if (!j.key) throw new Error(j.error?.message || `OpenRouter: HTTP ${r.status}`);
+    store.setAiKey(j.key, 'openrouter');
+    if (!linkedAIs().some((c) => c.provider === S.settings.aiProvider && c.provider !== 'openrouter')) S.settings.aiProvider = 'openrouter';
+    S.settings.aiModels = { ...(S.settings.aiModels || {}), openrouter: (S.settings.aiModels || {}).openrouter || 'deepseek/deepseek-chat-v3-0324:free' };
+    store.saveSettings(S.settings);
+    AIS.testing = false;
+    toast(t('AI connected: {name}', { name: 'OpenRouter' }));
+    const inp = $('#setup-key'); if (inp) inp.value = j.key;
+    loadAiModels(true);
+  } catch (e) {
+    AIS.testing = false;
+    AIS.error = e.code === 'web' ? t('Sign-in works in the app. In the browser, paste a key instead.') : e.message;
+    keepAi(rerenderSheet);
+  }
+}
+
+export function useFreeAI() {
+  S.settings.aiOn_pollinations = true;
+  S.settings.aiModels = { ...(S.settings.aiModels || {}), pollinations: S.settings.aiModels?.pollinations || 'openai' };
+  if (!linkedAIs().some((c) => c.provider === S.settings.aiProvider && c.provider !== 'pollinations')) S.settings.aiProvider = 'pollinations';
+  store.saveSettings(S.settings);
+  toast(t('Free AI is ready'));
+  closeSheet();
+  import('./app.js').then((m) => m.render());
 }

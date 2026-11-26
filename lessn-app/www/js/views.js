@@ -5,6 +5,7 @@ import {
   stagger, openSheet, seg,
 } from './core.js';
 import { allHomework, hwDoneAny, homeExtras, examId } from './assist.js';
+import { calendarExams } from './planner.js';
 import {
   weekData, prepareDay, changes, isChanged, periodLabel, holidayFor, nextHoliday, visibleDays, timegridFor,
 } from './data.js';
@@ -417,7 +418,7 @@ export function viewTasks() {
 // ---------------------------------------------------------------- Exams
 export function allExams() {
   const mine = store.myExams().map((e) => ({ ...e, mine: true }));
-  return [...(S.exams || []), ...mine];
+  return [...(S.exams || []), ...mine, ...calendarExams().map((e) => ({ ...e, mine: true }))];
 }
 
 function examCard(e, past, i) {
@@ -487,6 +488,17 @@ export function openLesson(id) {
       <button class="row" data-act="hw-add-for" data-subj="${esc(subjKey(l))}" data-date="${l.date}"><span class="row-ic">${icon('plus')}</span><span class="row-text"><b>${esc(t('Add homework'))}</b><small>${esc(t('For this subject'))}</small></span></button></div>
     ${ex.given.length ? `<div class="section-title">${icon('square-pen')}${esc(t('Given in this lesson'))}</div><div class="card">${ex.given.map((h) => hwRow(h).replace('</small>', ` · ${esc(t('Due'))} ${esc(relDay(fromUntisDate(h.due)))}</small>`)).join('')}</div>` : ''}
     ${sums.length ? `<div class="section-title">${esc(t('AI summary'))}</div><div class="card">${sums.map((x) => `<button class="row" data-act="open-summary" data-id="${x.id}"><span class="row-ic">${icon('sparkles')}</span><span class="row-text"><b>${esc(x.result?.title || t('Lesson summary'))}</b><small>${esc((x.result?.topics || []).slice(0, 3).join(' · '))}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : ''}
+    <div class="section-title">${icon('zap')}${esc(t('Actions'))}</div>
+    <div class="action-grid">
+      <button data-act="ls-test" data-id="${esc(id)}"><span style="--c:#8e4ec6">${icon('graduation-cap')}</span>${esc(t('Add test'))}</button>
+      <button data-act="ls-event" data-id="${esc(id)}"><span style="--c:#4f6bff">${icon('calendar-plus')}</span>${esc(t('Add to calendar'))}</button>
+      <button data-act="ls-remind" data-id="${esc(id)}"><span style="--c:#12a594">${icon('bell')}</span>${esc(t('Remind me'))}</button>
+      ${l.date === toUntisDate(new Date()) && l.end > nowMinV() && l.code !== 'cancelled' ? `<button data-act="ls-record" data-id="${esc(id)}"><span style="--c:#e5484d">${icon('mic')}</span>${esc(l.start <= nowMinV() ? t('Record now') : t('Record'))}</button>` : ''}
+      <button data-act="ls-ai" data-id="${esc(id)}"><span style="--c:#6e56cf">${icon('sparkles')}</span>${esc(t('Ask AI'))}</button>
+      <button data-act="ls-share" data-id="${esc(id)}"><span style="--c:#f76b15">${icon('share-2')}</span>${esc(t('Share'))}</button>
+      <button data-act="ls-subject" data-id="${esc(id)}"><span style="--c:#30a46c">${icon('book-open')}</span>${esc(t('Subject overview'))}</button>
+      <button data-act="ls-color" data-id="${esc(id)}"><span style="--c:${color}">${icon('palette')}</span>${esc(t('Color'))}</button>
+    </div>
     <div class="section-title">${esc(t('My note'))}</div>
     <textarea class="note" id="note" placeholder="${esc(t('Add a note for this lesson'))}">${esc(store.notes()[noteKey(l)] || '')}</textarea>
   `, {
@@ -498,3 +510,69 @@ export function openLesson(id) {
 }
 
 export { PALETTE, hash };
+
+const nowMinV = () => { const d = new Date(); return d.getHours() * 100 + d.getMinutes(); };
+/** Actions of the lesson popup. */
+export async function lessonAction(act, id) {
+  const l = S.index[id];
+  if (!l) return;
+  const { closeSheet: close, toast: tst, PALETTE: pal } = await import('./core.js');
+  const { setS: setSetting } = await import('./features.js');
+  const { setView, render: rerender } = await import('./app.js');
+  const P = await import('./planner.js');
+  const subject = subjKey(l);
+  const name = subjName(l);
+  if (act === 'ls-test' || act === 'ls-event') {
+    close(true);
+    setTimeout(() => {
+      P.openEventForm(null, { type: act === 'ls-test' ? 'test' : 'event', date: l.date, subject, remind: '1440' });
+      setTimeout(() => { const s1 = document.getElementById('ev-start'); const s2 = document.getElementById('ev-end'); if (s1) s1.value = fmtTime(l.start); if (s2) s2.value = fmtTime(l.end); }, 80);
+    }, 260);
+  }
+  if (act === 'ls-remind') {
+    close(true);
+    const ev = { id: `e${Date.now()}`, type: 'reminder', title: `${name} · ${(l.rooms || []).map((r) => r.name).join(', ')}`.replace(/ · $/, ''), subject, date: l.date, start: fmtTime(l.start), end: fmtTime(l.end), remind: '10', repeat: 'none', notes: '', t: Date.now() };
+    localStorage.setItem('lessn:events', JSON.stringify([...P.myEvents(), ev]));
+    (await import('./data.js')).scheduleNative();
+    tst(t('You will be reminded 10 minutes before'));
+  }
+  if (act === 'ls-record') {
+    close(true);
+    if (l.start <= nowMinV()) { const F = await import('./features.js'); setView('recorder', 'left'); setTimeout(() => F.recStart(), 300); } else { const F = await import('./features.js'); F.armNext(l.start, l.end, subject); }
+  }
+  if (act === 'ls-ai') {
+    close(true);
+    const A = await import('./assist.js');
+    const sums = store.summaries().filter((x) => x.subject === subject && x.status === 'done').slice(-3);
+    A.newChat({ title: name, subject, context: `The student asks about the subject ${name} (lesson on ${l.date}, ${fmtTime(l.start)}, teacher ${(l.teachers || []).map((x) => x.name).join(', ')}). ${sums.length ? `Recent lesson summaries: ${sums.map((x) => `${x.result?.title}: ${x.result?.summary}`).join(' | ')}` : ''}` });
+  }
+  if (act === 'ls-share') {
+    const text = `${name} · ${fmt(fromUntisDate(l.date), { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtTime(l.start)}–${fmtTime(l.end)}${l.rooms.length ? ` · ${l.rooms.map((r) => r.name).join(', ')}` : ''}${l.code === 'cancelled' ? ` · ${t('Cancelled')}` : ''}`;
+    try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); tst(t('Copied')); } } catch { /* cancelled */ }
+  }
+  if (act === 'ls-subject') {
+    close(true);
+    setTimeout(() => openSubjectOverview(subject), 260);
+  }
+  if (act === 'ls-color') {
+    const { openMenu } = await import('./core.js');
+    const anchor = document.querySelector(`[data-act="ls-color"]`);
+    openMenu(anchor, pal.map((c) => [c, c]), S.settings.subjectColors?.[subject] || '', (c) => { setSetting('subjectColors', { ...S.settings.subjectColors, [subject]: c }); close(); rerender(); }, t('Color'));
+  }
+}
+/** Everything about one subject: next lessons, exams, homework, summaries, average grade. */
+export function openSubjectOverview(subject) {
+  const name = subjLabel(subject) || subject;
+  const today = toUntisDate(new Date());
+  const exams = allExams().filter((e) => e.subject === subject && e.date >= today).sort((a, b) => a.date - b.date);
+  const hw = allHomework().filter((h) => h.subject === subject && !hwDoneAny(h)).sort((a, b) => a.due - b.due);
+  const sums = store.summaries().filter((x) => x.subject === subject && x.status === 'done').sort((a, b) => b.date - a.date);
+  const grades = (S.grades || []).concat(store.manualGrades()).filter((g) => g.subject === subject);
+  const avg = grades.length ? (grades.reduce((a, g) => a + Number(String(g.mark ?? g.value ?? g.grade?.mark?.markDisplayValue ?? 0).replace(',', '.')), 0) / grades.length) : null;
+  import('./core.js').then(({ openSheet: os }) => os(() => `<div class="d-head" style="--c:${colorFor(subject)}"><div class="d-chip">${esc(subject)}</div><h2>${esc(name)}</h2>${avg ? `<p>${esc(t('Average'))}: <b>${avg.toFixed(2)}</b> · ${esc(t('{n} grades', { n: grades.length }))}</p>` : ''}</div>
+    <div class="section-title">${icon('graduation-cap')}${esc(t('Upcoming exams'))}</div>
+    <div class="card">${exams.length ? exams.map((e) => `<button class="row" data-act="exam-open" data-id="${esc(examId(e))}"><span class="row-text"><b>${esc(e.name || t('Exam'))}</b><small>${esc(fmt(fromUntisDate(e.date), { weekday: 'short', day: 'numeric', month: 'short' }))} · ${esc(inDays(fromUntisDate(e.date)))}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('') : `<div class="row"><small>${esc(t('No upcoming exams'))}</small></div>`}</div>
+    <div class="section-title">${icon('clipboard-list')}${esc(t('Open homework'))}</div>
+    <div class="card">${hw.length ? hw.map((h) => `<button class="row" data-act="hw-open" data-key="${esc(h.key)}"><span class="row-text"><b>${esc(String(h.text).slice(0, 80))}</b><small>${esc(relDay(fromUntisDate(h.due)))}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('') : `<div class="row"><small>${esc(t('All caught up'))}</small></div>`}</div>
+    ${sums.length ? `<div class="section-title">${icon('sparkles')}${esc(t('Lesson summaries'))}</div><div class="card">${sums.slice(0, 6).map((x) => `<button class="row" data-act="open-summary" data-id="${x.id}"><span class="row-text"><b>${esc(x.result?.title || '')}</b><small>${esc(fmt(fromUntisDate(x.date), { day: 'numeric', month: 'short' }))}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : ''}`, { full: true }));
+}

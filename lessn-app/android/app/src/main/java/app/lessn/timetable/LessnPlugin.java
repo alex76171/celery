@@ -804,6 +804,150 @@ public class LessnPlugin extends Plugin {
         }).start();
     }
 
+    // ------------------------------------------------------------ OAuth sign-in (e.g. OpenRouter): catch the redirect on localhost
+    @PluginMethod
+    public void oauthListen(PluginCall call) {
+        int port = call.getInt("port", 3000);
+        int timeout = call.getInt("timeout", 300000);
+        new Thread(() -> {
+            try (java.net.ServerSocket server = new java.net.ServerSocket(port, 4, java.net.InetAddress.getByName("127.0.0.1"))) {
+                server.setSoTimeout(timeout);
+                while (true) {
+                    try (java.net.Socket sock = server.accept()) {
+                        java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(sock.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+                        String line = in.readLine();
+                        if (line == null) continue;
+                        String[] parts = line.split(" ");
+                        String path = parts.length > 1 ? parts[1] : "/";
+                        if (path.startsWith("/favicon")) { sock.getOutputStream().write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".getBytes()); continue; }
+                        String html = "<!doctype html><meta name=viewport content='width=device-width'><body style='font-family:sans-serif;text-align:center;padding:60px 20px'><h2>Signed in</h2><p>You can go back to Lessn now.</p></body>";
+                        byte[] b = html.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        java.io.OutputStream o = sock.getOutputStream();
+                        o.write(("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + b.length + "\r\nConnection: close\r\n\r\n").getBytes());
+                        o.write(b);
+                        o.flush();
+                        // bring Lessn back to the front
+                        Intent i = new Intent(getContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                        getContext().startActivity(i);
+                        JSObject r = new JSObject();
+                        r.put("path", path);
+                        call.resolve(r);
+                        return;
+                    }
+                }
+            } catch (java.net.SocketTimeoutException e) {
+                call.reject("Sign-in timed out", "timeout");
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Sign-in failed" : e.getMessage());
+            }
+        }).start();
+    }
+
+    // ------------------------------------------------------------ v4: launch targets, background recordings, check-ins, notification health
+    @PluginMethod
+    public void takeLaunch(PluginCall call) {
+        android.content.SharedPreferences p = Scheduler.prefs(getContext());
+        String target = p.getString("launch", null);
+        long at = p.getLong("launchAt", 0);
+        p.edit().remove("launch").apply();
+        JSObject r = new JSObject();
+        r.put("target", target != null && System.currentTimeMillis() - at < 10 * 60_000 ? target : null);
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void takeRecordings(PluginCall call) {
+        android.content.SharedPreferences p = Scheduler.prefs(getContext());
+        String list = p.getString("recDone", "[]");
+        p.edit().remove("recDone").apply();
+        JSObject r = new JSObject();
+        try { r.put("items", new JSONArray(list)); } catch (Exception e) { r.put("items", new JSONArray()); }
+        r.put("armedFor", RecorderService.armedFor);
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void takeCheckins(PluginCall call) {
+        android.content.SharedPreferences p = Scheduler.prefs(getContext());
+        String log = p.getString("checkins", "{}");
+        p.edit().remove("checkins").apply();
+        JSObject r = new JSObject();
+        try { r.put("log", new JSONObject(log)); } catch (Exception e) { r.put("log", new JSONObject()); }
+        call.resolve(r);
+    }
+
+    /** Arms the recorder for an upcoming lesson from inside the app (same as the notification's Record button). */
+    @PluginMethod
+    public void armRecording(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { call.reject("permission"); return; }
+        Intent i = new Intent(getContext(), RecorderService.class).setAction(RecorderService.ACTION_ARM)
+            .putExtra("startAt", (long) call.getDouble("startAt", 0d).doubleValue()).putExtra("endAt", (long) call.getDouble("endAt", 0d).doubleValue())
+            .putExtra("title", call.getString("title", "Lesson")).putExtra("meta", call.getString("meta", "{}"));
+        androidx.core.content.ContextCompat.startForegroundService(getContext(), i);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void notifHealth(PluginCall call) {
+        Context ctx = getContext();
+        JSObject r = new JSObject();
+        r.put("enabled", androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled());
+        android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        r.put("exact", Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms());
+        android.os.PowerManager pm = (android.os.PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+        r.put("battery", Build.VERSION.SDK_INT < 23 || pm.isIgnoringBatteryOptimizations(ctx.getPackageName()));
+        r.put("pending", Scheduler.events(ctx).length());
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void openBatterySettings(PluginCall call) {
+        try {
+            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getContext().getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+        } catch (Exception e) {
+            getContext().startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(i);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void testNotification(PluginCall call) {
+        Notifs.showTo(getContext(), 9999, Notifs.CH_PLANNER, call.getString("title", "Lessn"), call.getString("body", "Notifications work."), call.getString("open", null));
+        call.resolve();
+    }
+
+    /** Background check of the timetable for cancelled lessons and other changes (every 30 minutes). */
+    @PluginMethod
+    public void setUntisBackground(PluginCall call) {
+        Context ctx = getContext();
+        boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+        android.content.SharedPreferences.Editor e = Scheduler.prefs(ctx).edit().putBoolean("un_enabled", enabled);
+        if (enabled) {
+            e.putString("un_server", call.getString("server")).putString("un_school", call.getString("school"))
+                .putString("un_user", call.getString("username")).putString("un_pass", call.getString("password"))
+                .putInt("un_elType", call.getInt("elType", 5)).putInt("un_elId", call.getInt("elId", 0))
+                .putString("un_subjects", call.getString("subjects", "{}"));
+            JSObject tr = call.getObject("texts", new JSObject());
+            for (String k : new String[] { "Today", "Tomorrow", "Cancelled", "Room", "Changed" }) if (tr.has(k)) e.putString("un_t" + k, tr.getString(k));
+        } else e.remove("un_pass");
+        e.apply();
+        androidx.work.WorkManager wm = androidx.work.WorkManager.getInstance(ctx);
+        if (enabled) {
+            androidx.work.PeriodicWorkRequest req = new androidx.work.PeriodicWorkRequest.Builder(UntisWorker.class, 30, java.util.concurrent.TimeUnit.MINUTES)
+                .setConstraints(new androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build();
+            wm.enqueueUniquePeriodicWork("untis-check", androidx.work.ExistingPeriodicWorkPolicy.UPDATE, req);
+        } else wm.cancelUniqueWork("untis-check");
+        call.resolve();
+    }
+
     /** Opens a cached file in another app (PDF viewer, Office, gallery…). */
     @PluginMethod
     public void openFile(PluginCall call) {

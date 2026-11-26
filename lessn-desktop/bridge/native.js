@@ -190,6 +190,21 @@ function createNative(ctx) {
       w.loadURL(url);
     },
     notify: ({ title, body }) => notify(title, body),
+    /** OAuth sign-in: waits for the browser to come back to http://localhost:<port>/... and returns that path. */
+    oauthListen: ({ port = 3000, timeout = 300000 } = {}) => new Promise((resolve, reject) => {
+      const http = require('node:http');
+      const srv = http.createServer((req, res) => {
+        if (req.url.startsWith('/favicon')) { res.writeHead(404); res.end(); return; }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!doctype html><body style="font-family:Segoe UI,sans-serif;text-align:center;padding:60px"><h2>Signed in</h2><p>You can close this tab and go back to Lessn.</p></body>');
+        clearTimeout(timer); srv.close();
+        const w = getWindow(); if (w) { w.show(); w.focus(); }
+        resolve({ path: req.url });
+      });
+      const timer = setTimeout(() => { srv.close(); const e = new Error('Sign-in timed out'); e.code = 'timeout'; reject(e); }, timeout);
+      srv.on('error', (e) => { clearTimeout(timer); reject(e); });
+      srv.listen(port, '127.0.0.1');
+    }),
     // Phone-only features
     startRecording: () => unsupported('Background recording'),
     voiceStart: () => unsupported('Voice recording'),

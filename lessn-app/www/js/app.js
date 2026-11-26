@@ -2,7 +2,7 @@
 import './sync.js';
 import {
   S, t, $, $$, esc, icon, fmt, relDay, weekNumber, sameDay, startOfDay, addDays, mondayOf, toUntisDate, fromUntisDate, pad,
-  store, applyTheme, syncBars, ddHandlers, uiConfirm, uiPrompt, closeMenu, closeDialog, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
+  store, applyTheme, syncBars, subjLabel, ddHandlers, uiConfirm, uiPrompt, closeMenu, closeDialog, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
 } from './core.js';
 import { Untis } from './api.js';
 import { native } from './native.js';
@@ -10,26 +10,30 @@ import {
   refresh, loadWeek, loadHomework, loadExams, scheduleNative, iservClient, loadIServ, weekKey,
 } from './data.js';
 import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone, allExams } from './views.js';
-import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, aiModelPicked, openPricePage, loadAiModels, viewAISettings, unlinkAI, aiRowMenu } from './onboarding.js';
+import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, aiModelPicked, openPricePage, loadAiModels, viewAISettings, unlinkAI, aiRowMenu, openRouterSignIn, wizardAct, useFreeAI } from './onboarding.js';
 import { viewerAction } from './viewer.js';
 import { viewPC, linkAction, linkInput, startLink, isDesktop } from './link.js';
+import * as P from './planner.js';
+import * as LK from './links.js';
+import { openProfiles, switchProfile, addProfile, removeProfile, rememberActiveAccount } from './profiles.js';
 import {
   viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
   openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
   recStart, recStop, recState, processSummary, openSummary, deleteSummary, openNotifSettings, notifToggle, dndToggle,
   directions, setS, loadPresence,
 } from './features.js';
+import * as F from './features.js';
 import { renderLogin, bindLogin } from './login.js';
 import * as IS from './iserv-ui.js';
 import * as A from './assist.js';
 
-const DESK_NAV = [['today', 'Home', 'house'], ['week', 'Timetable', 'calendar-days'], ['tasks', 'Homework', 'clipboard-list'], ['exams', 'Exams', 'graduation-cap'], ['ai', 'AI helper', 'sparkles'],
+const DESK_NAV = [['today', 'Home', 'house'], ['week', 'Timetable', 'calendar-days'], ['calendar', 'Calendar', 'calendar-heart'], ['tasks', 'Homework', 'clipboard-list'], ['exams', 'Exams', 'graduation-cap'], ['ai', 'AI helper', 'sparkles'],
   ['iserv', 'IServ', 'school'], ['is-chat', 'Messenger', 'messages-square'], ['is-mail', 'E-Mail', 'mail'], ['is-files', 'Files', 'folders'], ['grades', 'Grades', 'award'], ['recorder', 'Lesson recorder', 'mic'], ['pc', 'Phone', 'smartphone'], ['more', 'Menu', 'layout-grid']];
 const tabList = () => (isDesktop()
   ? DESK_NAV.map(([id, label, ic]) => ({ id, label, icon: ic }))
   : [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }]);
 const TITLES = {
-  grades: 'Grades', 'ai-settings': 'AI helpers', pc: window.Capacitor?.isDesktop ? 'Phone' : 'PC', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
+  grades: 'Grades', calendar: 'Calendar', links: 'Linked apps', 'ai-settings': 'AI helpers', pc: window.Capacitor?.isDesktop ? 'Phone' : 'PC', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
   'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications', 'is-tasks': 'Tasks',
   today: 'Home', week: 'Timetable', tasks: 'Homework', exams: 'Exams',
 };
@@ -38,7 +42,7 @@ const isRoot = (v) => v === 'more' || (isDesktop() ? DESK_NAV.some(([id]) => id 
 const parentOf = (v) => PARENT[v] || 'more';
 const rootOf = (v) => { let x = v; for (let i = 0; i < 4 && !isRoot(x); i++) x = parentOf(x); return x; };
 const SUBVIEWS = new Proxy({}, { get: (_, v) => (typeof v === 'string' && !isRoot(v) ? TITLES[v] || v : undefined) });
-const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room', 'ai-settings', 'pc'];
+const ORDER = ['today', 'week', 'calendar', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room', 'ai-settings', 'pc', 'links'];
 
 // ---------------------------------------------------------------- shell
 const navHtml = () => `<nav class="tabs">${isDesktop() ? `<div class="side-brand"><img src="icon.png" alt=""><b>Lessn</b></div>` : ''}<span class="tab-ind" id="tab-ind"></span>${tabList().map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>`;
@@ -120,7 +124,7 @@ export function render() {
   const views = {
     today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance,
     recorder: viewRecorder, iserv: IS.viewIServHub, 'is-chat': IS.viewChats, 'is-room': IS.viewRoom, 'is-mail': IS.viewMail,
-    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat, 'ai-settings': viewAISettings, pc: viewPC,
+    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat, 'ai-settings': viewAISettings, pc: viewPC, calendar: P.viewCalendar, links: LK.viewLinks,
   };
   if ((S.view === 'is-room' || S.view === 'ai-chat') && lastView === S.view && !S.anim) { updateHeader(); return; }
   content.innerHTML = views[S.view]();
@@ -137,7 +141,12 @@ export function setView(v, dir) {
   if (v === S.view) { $('#main').scrollTo({ top: 0, behavior: 'smooth' }); return; }
   S.anim = dir || (ORDER.indexOf(v) > ORDER.indexOf(S.view) ? 'left' : 'right');
   S.view = v;
-  render();
+  // the old screen moves out while the new one comes in (View Transitions where supported)
+  if (S.settings.animations && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.dataset.vt = S.anim;
+    const anim = S.anim;
+    document.startViewTransition(() => { S.anim = null; render(); const c = $('#content'); if (c) c.className = `anim anim-${anim}`; }).finished.finally(() => { delete document.documentElement.dataset.vt; });
+  } else render();
   if (v === 'tasks' && !S.homework) loadHomework();
   if (v === 'tasks') A.loadIServTasks();
   if (v === 'exams' && !S.exams) loadExams();
@@ -296,7 +305,15 @@ function onClick(e) {
       break;
     case 'version': versionTap(); break;
     case 'set': setSetting(d.key, d.val); break;
-    case 'toggle': setSetting(d.key, !S.settings[d.key]); break;
+    case 'toggle': {
+      // let the switch slide first, then apply (re-rendering at once would skip the animation)
+      const sw = el.querySelector('.switch');
+      const v = !S.settings[d.key];
+      if (sw) { sw.classList.toggle('on', v); sw.classList.add('flip'); }
+      S.settings[d.key] = v;
+      setTimeout(() => setSetting(d.key, v), sw ? 280 : 0);
+      break;
+    }
     case 'subj-reset': {
       const c = { ...S.settings.subjectColors }; delete c[d.k];
       const n = { ...S.settings.subjectNames }; delete n[d.k];
@@ -362,6 +379,60 @@ function onClick(e) {
     case 'ai-unlink': uiConfirm(t('Unlink {name}?', { name: d.name }), { danger: true, ok: t('Unlink') }).then((ok) => { if (ok) unlinkAI(d.p); }); break;
     case 'ai-row': aiRowMenu(el, d.p); break;
     case 'hw-scan': $('#hw-scan')?.click(); break;
+    case 'wz-theme': case 'wz-accent': case 'wz-tab': case 'wz-next': case 'wz-skip': wizardAct(d.act, d.v); break;
+    case 'ai-free-now': useFreeAI(); break;
+    case 'profiles': openProfiles(); break;
+    case 'profile-switch': switchProfile(d.id); break;
+    case 'profile-add': addProfile(); break;
+    case 'profile-remove': removeProfile(d.id); break;
+    case 'link-openrouter': openAISetup(null, { provider: 'openrouter' }); setTimeout(openRouterSignIn, 400); break;
+    case 'link-free-ai': S.settings.aiOn_pollinations = true; S.settings.aiModels = { ...(S.settings.aiModels || {}), pollinations: S.settings.aiModels?.pollinations || 'openai' }; if (!store.aiKey(S.settings.aiProvider)) S.settings.aiProvider = 'pollinations'; setS('aiOn_pollinations', true); toast(t('Free AI is ready')); render(); break;
+    case 'ics-export': LK.shareCalendar(true); break;
+    case 'ics-export-nolessons': LK.shareCalendar(false); break;
+    case 'feed-add': LK.addFeed(); break;
+    case 'feed-remove': LK.removeFeed(d.id); break;
+    // calendar & planner
+    case 'cal-day': P.calDay(d.d); break;
+    case 'cal-month': P.calMonth(d.dir); break;
+    case 'cal-today': P.calToday(); break;
+    case 'cal-goto-day': S.day = fromUntisDate(Number(d.d)); setView('today', 'left'); break;
+    case 'ev-add': closeSheet(true); P.openEventForm(null, d.d ? { date: Number(d.d) } : {}); break;
+    case 'ev-save': P.saveEvent(d.id); break;
+    case 'ev-del': P.deleteEvent(d.id); break;
+    case 'ev-open': P.openEvent(d.id); break;
+    case 'ev-edit': closeSheet(true); setTimeout(() => P.openEventForm(d.id), 250); break;
+    case 'ev-ics': import('./links.js').then((m) => m.shareEventIcs(d.id)); break;
+    case 'ci-yes': P.answerCheckin(d.id, 'yes'); break;
+    case 'ci-no': P.answerCheckin(d.id, 'no'); break;
+    case 'ci-later': P.answerCheckin(d.id, 'later'); break;
+    case 'ev-add-study': P.blockStudyTime(d.id); break;
+    case 'ai-quiz': { closeSheet(true); const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.quizExam(e); break; }
+    case 'ai-cards': { const e = allExams().find((x) => A.examId(x) === d.id); if (e) A.cardsExam(e); break; }
+    // rich AI answers
+    case 'code-run': A.runBlock(d.id); break;
+    case 'code-copy': A.copyBlock(d.id); break;
+    case 'code-fix': A.fixCode(d.id); break;
+    case 'file-open-block': A.saveBlock(d.id, true); break;
+    case 'file-save-block': A.saveBlock(d.id, false); break;
+    case 'ai-speak': A.speakAnswer(d.i); break;
+    case 'ai-share': A.shareAnswer(d.i); break;
+    case 'ai-pdf': A.answerPdf(d.i); break;
+    case 'ai-regen': A.regenerate(); break;
+    // recording & summaries
+    case 'rec-arm': F.armNext(d.start, d.end, d.subj); break;
+    case 'rec-subjects': F.openRecSubjects(); break;
+    case 'rec-subjects-save': F.saveRecSubjects(); break;
+    case 'sum-hw-add': F.summaryHomework(d.id, d.i); break;
+    case 'sum-hw-all': F.summaryHomework(d.id, null); break;
+    case 'sum-test-add': F.summaryTest(d.id, d.i); break;
+    case 'sum-suggest': F.summaryChat(d.id, d.text); break;
+    case 'sum-chat': F.summaryChat(d.id); break;
+    case 'sum-pdf': F.summaryPdf(d.id); break;
+    // notifications health
+    case 'notif-perm': native.request(['notifications']).then((r) => { if (r?.notifications !== 'granted') native.openNotificationSettings(); }); closeSheet(true); break;
+    case 'notif-exact': native.openAppSettings?.(); closeSheet(true); break;
+    case 'notif-battery': native.openBatterySettings(); closeSheet(true); break;
+    case 'notif-test': native.testNotification({ title: t('Lessn'), body: t('Notifications work. You will be reminded like this.'), open: 'calendar' }).then(() => toast(t('Sent')), (e) => toast(e.message, 'err')); break;
     case 'hw-found-save': A.saveFound(); break;
     case 'msg-copy': IS.copyMessage(d.id); break;
     case 'msg-delete': uiConfirm(t('Delete this message for everyone?'), { ok: t('Delete'), danger: true }).then((ok) => { if (ok) IS.deleteMessage(d.id); }); break;
@@ -376,6 +447,7 @@ function onClick(e) {
     case 'is-task': IS.openTask(d.id); break;
     case 'is-tasks-retry': S.iservTasks = null; IS.retry('tasks'); render(); break;
     case 'hw-add': A.openHomeworkForm(); break;
+    case 'ls-test': case 'ls-event': case 'ls-remind': case 'ls-record': case 'ls-ai': case 'ls-share': case 'ls-subject': case 'ls-color': import('./views.js').then((m) => m.lessonAction(d.act, d.id)); break;
     case 'hw-add-for': closeSheet(true); A.openHomeworkForm({ subject: d.subj, date: Number(d.date) }); break;
     case 'hw-save': A.saveHomework(); break;
     case 'hw-open': A.openHomework(d.key); break;
@@ -420,6 +492,7 @@ function onClick(e) {
     case 'is-read-all': IS.readAll(); break;
     // recorder
     case 'ai-getkey': openKeyPage(); break;
+    case 'ai-oauth': openRouterSignIn(); break;
     case 'ai-load-models': loadAiModels(); break;
     case 'ai-prices': openPricePage(); break;
     case 'rec-start': recStart(); break;
@@ -484,6 +557,8 @@ export function startApp(api) {
   scheduleNative();
   maybeRunSetup();
   startLink();
+  rememberActiveAccount();
+  startupExtras();
   IS.desktopIServWatch();
   const isAcc = store.iserv();
   if (isAcc && S.settings.iservNotify) native.iservBackground({ enabled: true, host: isAcc.host, username: isAcc.username, password: isAcc.password, chats: true });
@@ -543,6 +618,7 @@ function boot() {
     }
     if (S.view === 'recorder' || S.view === 'attendance') render();
     IS.resumePolling();
+    P.handleLaunch();
   });
   plugin('App')?.addListener('backButton', () => {
     if (!S.api) return;
@@ -576,3 +652,32 @@ async function phoneSignInCard() {
 }
 
 boot();
+
+/** Things to do once after start: notification targets, permission, background change checks, calendars. */
+async function startupExtras() {
+  P.refreshContextData();
+  P.applyHolidayNames();
+  setTimeout(() => P.nameHolidaysWithAI(), 8000);
+  P.handleLaunch();
+  LK.refreshFeeds();
+  if (!native || isDesktop()) return;
+  const s = S.settings;
+  // Android 13+: ask for the notification permission once when something needs it
+  if (!localStorage.getItem('lessn:askedNotif') && (s.notifyLessons || s.notifyChanges || s.studyCheckins !== false || s.recAsk || s.iservNotify)) {
+    localStorage.setItem('lessn:askedNotif', '1');
+    native.request(['notifications']).catch(() => {});
+  }
+  // cancelled lessons and other changes, checked in the background
+  const a = S.account;
+  if (a?.password) {
+    const el = S.api?.ownElement?.() || a.element || {};
+    const subjects = {};
+    for (const w of Object.values(S.weeks || {})) for (const l of (Array.isArray(w) ? w : [])) for (const x of l.subjects || []) if (x?.id != null) subjects[x.id] = subjLabel(x.name) || x.name;
+    native.untisBackground({
+      enabled: !!s.notifyChanges, server: a.server, school: a.school, username: a.username, password: a.password, elType: el.type || 5, elId: el.id || 0,
+      subjects: JSON.stringify(subjects), texts: { Today: t('Today'), Tomorrow: t('Tomorrow'), Cancelled: t('Cancelled'), Room: t('Room change'), Changed: t('Changed') },
+    });
+  }
+}
+
+export function refreshNav() { const n = $('nav.tabs'); if (n) { n.outerHTML = navHtml(); updateHeader(); } }

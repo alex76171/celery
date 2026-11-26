@@ -128,7 +128,29 @@
       return out;
     },
     addListener: () => ({ remove() {} }),
+    takeLaunch: () => ({ target: null }),
+    takeCheckins: () => ({ log: {} }),
+    takeRecordings: () => { const items = doneRecs.splice(0); return { items, armedFor: armed?.start || 0 }; },
+    /** PC: record the next lesson with the microphone, starting and stopping by itself. */
+    armRecording: ({ startAt, endAt, title, meta } = {}) => {
+      if (armed) clearTimeout(armed.timer);
+      const begin = async () => {
+        try {
+          await startMic(Math.ceil((endAt - Date.now()) / 60000) + 1);
+          setTimeout(async () => { const r = await stopMic(false, `lesson-${Date.now()}.webm`); if (r.path) { doneRecs.push({ path: r.path, duration: r.duration, meta, t: Date.now() }); D.invoke('notify', { title: `${title} ✓`, body: 'Lessn' }); } armed = null; }, Math.max(60000, endAt - Date.now()));
+        } catch (e) { console.warn(e); armed = null; }
+      };
+      armed = { start: startAt, timer: setTimeout(begin, Math.max(0, startAt - Date.now())) };
+    },
+    notifHealth: () => ({ enabled: true, exact: true, battery: true, pending: 0 }),
+    testNotification: ({ title, body } = {}) => D.invoke('notify', { title, body }),
+    untisBackground: () => {},
+    setUntisBackground: () => {},
+    openBatterySettings: () => {},
+    openNotificationSettings: () => D.invoke('openAppSettings', {}),
   };
+  const doneRecs = [];
+  let armed = null;
   const plugin = new Proxy({}, { get: (_, name) => (typeof name !== 'string' || name === 'then' ? undefined : local[name] || ((args) => D.invoke(name, args))) });
   window.Capacitor = {
     isNativePlatform: () => true,

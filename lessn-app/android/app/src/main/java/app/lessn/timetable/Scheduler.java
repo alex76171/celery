@@ -110,4 +110,25 @@ public final class Scheduler {
             p.edit().putString("presence", log.toString()).apply();
         } catch (Exception ignored) { }
     }
+
+    static void logCheckin(Context ctx, String exam, String answer) {
+        SharedPreferences p = prefs(ctx);
+        try {
+            JSONObject log = new JSONObject(p.getString("checkins", "{}"));
+            log.put(exam, answer);
+            p.edit().putString("checkins", log.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    /** Recordings made in the background, waiting for the app to summarize them. */
+    static void addDoneRecording(Context ctx, String path, long duration, String meta) {
+        SharedPreferences p = prefs(ctx);
+        try {
+            JSONArray arr = new JSONArray(p.getString("recDone", "[]"));
+            JSONObject o = new JSONObject();
+            o.put("path", path); o.put("duration", duration); o.put("meta", meta); o.put("t", System.currentTimeMillis());
+            arr.put(o);
+            p.edit().putString("recDone", arr.toString()).apply();
+        } catch (Exception ignored) { }
+    }
 }

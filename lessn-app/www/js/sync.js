@@ -4,7 +4,7 @@
 const KEY = 'lessn:';
 const META = 'lessn:sync:meta';
 const SEQ = 'lessn:sync:seq';
-const SYNCED = ['account', 'iserv', 'aikeys', 'settings', 'grades', 'summaries', 'myexams', 'notes', 'hwdone', 'chats', 'myhw', 'plans', 'plandone', 'seen'];
+const SYNCED = ['account', 'iserv', 'aikeys', 'settings', 'grades', 'summaries', 'myexams', 'notes', 'hwdone', 'chats', 'myhw', 'plans', 'plandone', 'seen', 'events', 'checkins', 'holnames', 'icsfeeds'];
 const SECRET = ['account', 'iserv', 'aikeys'];
 /** Settings that stay per device (layout and size differ between phone and PC). */
 const DEVICE_SETTINGS = ['tabs', 'startView', 'fontScale', 'density', 'weekLayout', 'onboarded'];

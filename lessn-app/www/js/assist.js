@@ -7,6 +7,9 @@ import {
 import { chat as aiChat, studyPlan as aiPlan, LANG_NAME, aiReady, linkedAIs, aiFor, aiLabel, PROVIDERS, extractHomework } from './ai.js';
 import { native, hasNative } from './native.js';
 import { openMenu } from './core.js';
+import { renderMd, runBlock, copyBlock, saveBlock, BLOCKS } from './rich.js';
+import { scheduleContext, checkinCard, calendarExams } from './planner.js';
+import { recordNextCard } from './features.js';
 import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
 import { render, setView } from './app.js';
 
@@ -94,6 +97,8 @@ export function saveFound() {
   toast(t('{n} homework added', { n: add.length }));
 }
 
+export function addMyHomework(items) { setMyHomework([...myHomework(), ...items]); refreshCtx(); }
+const refreshCtx = () => import('./planner.js').then((m) => m.refreshContextData()).catch(() => {});
 export function saveHomework() {
   const text = $('#h-text').value.trim();
   if (!text) { toast(t('Write what you have to do'), 'err'); return; }
@@ -159,8 +164,11 @@ function systemPrompt(extra) {
   const lang = LANG_NAME[S.settings.lang] || 'German';
   return `You are a friendly, patient tutor for a school student in Germany. Explain step by step and check understanding.
 Help the student learn: give hints and explanations before full solutions, but give the full solution if they ask for it.
-Reply in ${lang} unless the student writes in another language. Keep answers short and clear, use simple Markdown (bold, lists).
+Reply in ${lang} unless the student writes in another language. Keep answers short and clear. Use Markdown: headings, **bold**, lists, tables, and --- for a dividing line.
 Today is ${fmt(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.
+You can create files for the student: put the file content in a code block whose info string is file:NAME.EXT, for example \`\`\`file:Lernzettel.pdf (write the content as Markdown and the app turns it into a PDF), file:vocab.csv, file:notes.md, file:page.html or file:diagram.svg. Only make a file when it helps or when asked.
+The student can run code: Python in a \`\`\`python block (numpy, pandas, matplotlib and more work; files saved to the current folder and plots shown with plt.show() appear as attachments) and JavaScript in a \`\`\`js block. Use this for calculations, charts and data.
+${S.settings.aiKnowsSchedule === false ? '' : scheduleContext()}
 ${extra || ''}`;
 }
 
@@ -197,6 +205,27 @@ ${sums.length ? `Recent lesson summaries in this subject:\n${summaryText(sums)}`
 ${plan ? `Their study plan: ${plan.plan.map((d) => `${d.date}: ${d.title}`).join('; ')}` : ''}
 Offer to quiz them with practice questions.`,
   });
+}
+
+export function quizExam(e) {
+  chatForExam(e);
+  setTimeout(() => sendAI(t('Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.')), 350);
+}
+/** Flashcards for an exam as a PDF (from lesson summaries and the exam topic). */
+export async function cardsExam(e) {
+  closeSheet(true);
+  toast(t('The AI is making your flashcards…'));
+  try {
+    const { complete } = await import('./ai.js');
+    const sums = summariesFor(e.subject, 6);
+    const md = await complete({ feature: 'files', temperature: 0.4, messages: [{ role: 'user', text: `Make 16 flashcards for a school student preparing for: ${subjLabel(e.subject)} "${e.name || ''}" on ${e.date}. ${e.text || ''}
+${sums.length ? `Use these lesson summaries:\n${summaryText(sums)}` : 'Use typical topics for this subject and grade.'}
+Write in ${LANG_NAME[S.settings.lang] || 'German'} as Markdown: a heading "# Flashcards: <subject>", then for each card "## <n>. <question>" followed by the answer, then a line with ---.` }] });
+    const { BLOCKS, saveBlock } = await import('./rich.js');
+    const id = `cards${Date.now()}`;
+    BLOCKS[id] = { name: `${t('Flashcards')} ${subjLabel(e.subject) || ''}.pdf`.replace(/[\\/:*?"<>|]/g, '_'), code: md.replace(/^```\w*\n?|```$/g, '') };
+    saveBlock(id, true);
+  } catch (err) { toast(t(err.message), 'err'); }
 }
 
 const firstName = () => {
@@ -254,20 +283,7 @@ let homeAI = '';
 export function openChat(id) { current = id; pending = []; setView('ai-chat', 'left'); }
 export const chatTitle = () => chats().find((c) => c.id === current)?.title || t('AI helper');
 
-export function md(s) {
-  return esc(s)
-    .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    .replace(/(^|\s)\*(?!\s)(.+?)\*(?=\s|$)/g, '$1<i>$2</i>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^#{1,3} (.+)$/gm, '<b class="md-h">$1</b>')
-    .replace(/^\s*[-*] (.+)$/gm, '<span class="md-li">$1</span>')
-    .replace(/^\s*(\d+)\. (.+)$/gm, '<span class="md-li num"><em>$1.</em> $2</span>')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/(<\/span>|<\/b>)\n(?=<span class="md-li)/g, '$1')
-    .replace(/(class="md-h">[^<]*<\/b>)\n/g, '$1')
-    .trim();
-}
+export function md(s) { return renderMd(s); }
 
 function chatMessages(c) {
   const msgs = live[c.id] || c.messages;
@@ -276,7 +292,7 @@ function chatMessages(c) {
   return intro + msgs.map((m, i) => (m.role === 'user'
     ? `<div class="gm-user">${(m.images || []).filter((x) => x.thumb).map((x) => `<img class="msg-img" src="${x.thumb}" alt="">`).join('')}${(m.docs || []).map((d) => `<span class="msg-doc">${icon('file-text')}${esc(d.name)}</span>`).join('')}${m.text ? `<div class="gm-ubub">${esc(m.text)}</div>` : ''}</div>`
     : `<div class="gm-ai ${m.alt ? 'alt' : ''}"><span class="gm-spark">${icon('sparkles')}</span><div class="gm-text">${m.by && (many || m.alt) ? `<small class="gm-by">${esc(m.by)}</small>` : ''}${md(m.text)}${m.note ? `<small class="gm-note">${icon('info')}${esc(m.note)}</small>` : ''}
-      <div class="gm-acts"><button data-act="ai-copy" data-i="${i}" aria-label="${esc(t('Copy'))}">${icon('copy')}</button>${many ? `<button data-act="ai-retry" data-i="${i}">${icon('refresh-cw')}<span>${esc(t('Ask another AI'))}</span></button>` : ''}</div></div></div>`)).join('')
+      <div class="gm-acts"><button data-act="ai-copy" data-i="${i}" aria-label="${esc(t('Copy'))}">${icon('copy')}</button><button data-act="ai-speak" data-i="${i}" aria-label="${esc(t('Read aloud'))}">${icon('volume-2')}</button><button data-act="ai-share" data-i="${i}" aria-label="${esc(t('Share'))}">${icon('share-2')}</button><button data-act="ai-pdf" data-i="${i}" aria-label="PDF">${icon('file-down')}</button>${i === msgs.length - 1 ? `<button data-act="ai-regen" data-i="${i}" aria-label="${esc(t('Try again'))}">${icon('rotate-ccw')}</button>` : ''}${many ? `<button data-act="ai-retry" data-i="${i}">${icon('refresh-cw')}<span>${esc(t('Ask another AI'))}</span></button>` : ''}</div></div></div>`)).join('')
     + (S.aiThinking === c.id ? `<div class="gm-ai thinking"><span class="gm-spark spin">${icon('sparkles')}</span><div class="gm-text"><span class="shimmer">${esc(t('Thinking…'))}</span><i class="gm-line"></i><i class="gm-line short"></i></div></div>` : '');
 }
 
@@ -429,8 +445,9 @@ export async function sendAI(textOverride) {
   S.aiThinking = null;
   c.messages = msgs;
   c.t = Date.now();
-  if (c.title === t('New chat') && text) c.title = text.slice(0, 48);
+  if (c.title === t('New chat') && text) { c.title = text.slice(0, 48); c.autoTitle = true; }
   saveChats([c, ...chats().filter((x) => x.id !== c.id)]);
+  if (c.autoTitle && msgs.filter((m) => m.role === 'model').length === 1 && S.settings.aiTitles !== false) aiTitle(c);
   if (S.view === 'ai-chat' && current === c.id) {
     repaint(c);
     const title = $('#title');
@@ -517,6 +534,11 @@ export function homeExtras() {
   const today = toUntisDate(new Date());
   const tomorrow = toUntisDate(addDays(new Date(), 1));
   const out = [];
+  // "Have you studied for …?" and "Record the next lesson?"
+  const ci = checkinCard();
+  if (ci) out.push(ci);
+  const rec = recordNextCard();
+  if (rec) out.push(rec);
   // homework due today / tomorrow / overdue
   const due = allHomework().filter((h) => !hwDoneAny(h) && h.due <= tomorrow && h.due >= today - 7).sort((a, b) => a.due - b.due);
   if (due.length) {
@@ -548,6 +570,7 @@ export function homeExtras() {
 export const TAB_DEFS = {
   today: { label: 'Home', icon: 'house' },
   week: { label: 'Week', icon: 'calendar-range' },
+  calendar: { label: 'Calendar', icon: 'calendar-heart' },
   tasks: { label: 'Homework', icon: 'list-checks' },
   exams: { label: 'Exams', icon: 'graduation-cap' },
   iserv: { label: 'IServ', icon: 'school' },
@@ -585,3 +608,58 @@ export function editTabs(action, k, dir) {
 }
 
 export { iservOpenUrl, startOfDay };
+
+// ---------------------------------------------------------------- answer tools
+/** A short title for a chat, written by the AI after the first answer. */
+async function aiTitle(c) {
+  try {
+    const { complete } = await import('./ai.js');
+    const first = (live[c.id] || c.messages).slice(0, 2).map((m) => `${m.role === 'user' ? 'Student' : 'Tutor'}: ${String(m.text).slice(0, 600)}`).join('\n');
+    let title = await complete({ feature: 'chat', temperature: 0.3, messages: [{ role: 'user', text: `Give this chat a short title of 2 to 5 words in ${LANG_NAME[S.settings.lang] || 'German'}. Reply with the title only, no quotes or punctuation at the end.\n\n${first}` }] });
+    title = title.split('\n')[0].replace(/^["'#*\s]+|["'*.\s]+$/g, '').slice(0, 60);
+    if (!title) return;
+    const all = chats();
+    const x = all.find((y) => y.id === c.id);
+    if (!x) return;
+    x.title = title; x.autoTitle = false;
+    saveChats(all);
+    if (current === c.id && S.view === 'ai-chat') { const el = $('#title'); if (el) { el.classList.add('title-swap'); el.textContent = title; } }
+  } catch { /* keep the first words as title */ }
+}
+const msgAt = (i) => { const c = chats().find((x) => x.id === current); return (live[c?.id] || c?.messages || [])[Number(i)]; };
+export function speakAnswer(i) {
+  const m = msgAt(i);
+  if (!m || !window.speechSynthesis) return;
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
+  const u = new SpeechSynthesisUtterance(m.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, ' '));
+  u.lang = { de: 'de-DE', en: 'en-US', tr: 'tr-TR', fr: 'fr-FR', es: 'es-ES', pl: 'pl-PL', ru: 'ru-RU', uk: 'uk-UA', ar: 'ar' }[S.settings.lang] || 'de-DE';
+  speechSynthesis.speak(u);
+}
+export async function shareAnswer(i) {
+  const m = msgAt(i);
+  if (!m) return;
+  try { if (navigator.share) await navigator.share({ text: m.text }); else if (hasNative()) await native.shareFile({ text: m.text }); else { await navigator.clipboard.writeText(m.text); toast(t('Copied')); } } catch { /* cancelled */ }
+}
+export async function answerPdf(i) {
+  const m = msgAt(i);
+  if (!m) return;
+  const id = `pdf${Date.now()}`;
+  BLOCKS[id] = { name: `${(chats().find((x) => x.id === current)?.title || 'Lessn').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)}.pdf`, code: m.text };
+  saveBlock(id, true);
+}
+export async function regenerate() {
+  const c = chats().find((x) => x.id === current);
+  if (!c) return;
+  const msgs = live[c.id] || (live[c.id] = c.messages.map((m) => ({ ...m })));
+  while (msgs.length && msgs[msgs.length - 1].role === 'model') msgs.pop();
+  const lastUser = msgs.pop();
+  if (!lastUser) return;
+  pending = [...(lastUser.images || []).filter((x) => x.data)];
+  await sendAI(lastUser.text);
+}
+export { runBlock, copyBlock, saveBlock };
+export function fixCode(id) {
+  const b = BLOCKS[id];
+  if (!b) return;
+  sendAI(`${t('This code gave an error. Please fix it and explain the mistake briefly.')}\n\n\`\`\`${b.lang}\n${b.code}\n\`\`\`\n\n${b.error || ''}`);
+}

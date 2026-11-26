@@ -34,7 +34,73 @@ export const PROVIDERS = {
   },
   openrouter: {
     name: 'OpenRouter (many models)', keyUrl: 'https://openrouter.ai/keys', placeholder: 'sk-or-…', base: 'https://openrouter.ai/api/v1',
-    audio: null, priceUrl: 'https://openrouter.ai/models', model: 'openrouter/auto', models: ['openrouter/auto'],
+    audio: null, priceUrl: 'https://openrouter.ai/models', model: 'openrouter/auto', models: ['openrouter/auto', 'deepseek/deepseek-chat-v3-0324:free', 'meta-llama/llama-3.3-70b-instruct:free'],
+    oauth: true,
+  },
+  pollinations: {
+    name: 'Pollinations (free, no key)', keyUrl: '', placeholder: '', base: 'https://text.pollinations.ai/openai', audio: null, noKey: true, noList: true, free: 'free',
+    priceUrl: 'https://pollinations.ai', model: 'openai', models: ['openai', 'openai-large', 'mistral', 'deepseek', 'qwen-coder'],
+  },
+  groq: {
+    name: 'Groq (fast, free tier)', keyUrl: 'https://console.groq.com/keys', placeholder: 'gsk_…', base: 'https://api.groq.com/openai/v1', free: 'tier',
+    audio: 'transcribe', transcribeModel: 'whisper-large-v3', json: true, priceUrl: 'https://groq.com/pricing',
+    model: 'llama-3.3-70b-versatile', models: ['llama-3.3-70b-versatile', 'meta-llama/llama-4-maverick-17b-128e-instruct', 'qwen/qwen3-32b', 'openai/gpt-oss-120b'],
+  },
+  xai: {
+    name: 'xAI Grok', keyUrl: 'https://console.x.ai', placeholder: 'xai-…', base: 'https://api.x.ai/v1', audio: null, json: true,
+    priceUrl: 'https://docs.x.ai/docs/models', model: 'grok-3-mini', models: ['grok-4', 'grok-3', 'grok-3-mini'],
+  },
+  deepseek: {
+    name: 'DeepSeek', keyUrl: 'https://platform.deepseek.com/api_keys', placeholder: 'sk-…', base: 'https://api.deepseek.com/v1', audio: null, json: true,
+    priceUrl: 'https://api-docs.deepseek.com/quick_start/pricing', model: 'deepseek-chat', models: ['deepseek-chat', 'deepseek-reasoner'],
+  },
+  perplexity: {
+    name: 'Perplexity (web search)', keyUrl: 'https://www.perplexity.ai/settings/api', placeholder: 'pplx-…', base: 'https://api.perplexity.ai', audio: null,
+    priceUrl: 'https://docs.perplexity.ai/getting-started/pricing', model: 'sonar', models: ['sonar', 'sonar-pro', 'sonar-reasoning'], noList: true,
+  },
+  cohere: {
+    name: 'Cohere', keyUrl: 'https://dashboard.cohere.com/api-keys', placeholder: '', base: 'https://api.cohere.ai/compatibility/v1', audio: null, free: 'tier',
+    priceUrl: 'https://cohere.com/pricing', model: 'command-a-03-2025', models: ['command-a-03-2025', 'command-r-plus', 'command-r7b-12-2024'],
+  },
+  cerebras: {
+    name: 'Cerebras (fast, free tier)', keyUrl: 'https://cloud.cerebras.ai', placeholder: 'csk-…', base: 'https://api.cerebras.ai/v1', audio: null, free: 'tier',
+    priceUrl: 'https://www.cerebras.ai/pricing', model: 'llama-3.3-70b', models: ['llama-3.3-70b', 'qwen-3-32b', 'gpt-oss-120b'],
+  },
+  together: {
+    name: 'Together AI', keyUrl: 'https://api.together.ai/settings/api-keys', placeholder: '', base: 'https://api.together.xyz/v1', audio: 'transcribe', transcribeModel: 'openai/whisper-large-v3',
+    priceUrl: 'https://www.together.ai/pricing', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-VL-72B-Instruct'],
+  },
+  fireworks: {
+    name: 'Fireworks AI', keyUrl: 'https://fireworks.ai/account/api-keys', placeholder: 'fw_…', base: 'https://api.fireworks.ai/inference/v1', audio: null,
+    priceUrl: 'https://fireworks.ai/pricing', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct', models: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/deepseek-v3'],
+  },
+  github: {
+    name: 'GitHub Models (free with GitHub)', keyUrl: 'https://github.com/settings/personal-access-tokens', placeholder: 'github_pat_…', base: 'https://models.github.ai/inference', audio: null, free: 'tier', noList: true,
+    priceUrl: 'https://docs.github.com/en/github-models/use-github-models/prototyping-with-ai-models#rate-limits', model: 'openai/gpt-4.1-mini', models: ['openai/gpt-4.1-mini', 'openai/gpt-4.1', 'meta/Llama-4-Maverick-17B-128E-Instruct-FP8', 'deepseek/DeepSeek-V3-0324', 'mistral-ai/mistral-medium-2505'],
+  },
+  huggingface: {
+    name: 'Hugging Face', keyUrl: 'https://huggingface.co/settings/tokens', placeholder: 'hf_…', base: 'https://router.huggingface.co/v1', audio: null, free: 'tier',
+    priceUrl: 'https://huggingface.co/pricing', model: 'meta-llama/Llama-3.3-70B-Instruct', models: ['meta-llama/Llama-3.3-70B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3-0324'],
+  },
+  nvidia: {
+    name: 'NVIDIA NIM', keyUrl: 'https://build.nvidia.com', placeholder: 'nvapi-…', base: 'https://integrate.api.nvidia.com/v1', audio: null, free: 'tier',
+    priceUrl: 'https://build.nvidia.com', model: 'meta/llama-3.3-70b-instruct', models: ['meta/llama-3.3-70b-instruct', 'deepseek-ai/deepseek-r1', 'qwen/qwen2.5-coder-32b-instruct'],
+  },
+  sambanova: {
+    name: 'SambaNova', keyUrl: 'https://cloud.sambanova.ai/apis', placeholder: '', base: 'https://api.sambanova.ai/v1', audio: null, free: 'tier',
+    priceUrl: 'https://cloud.sambanova.ai/plans/pricing', model: 'Meta-Llama-3.3-70B-Instruct', models: ['Meta-Llama-3.3-70B-Instruct', 'DeepSeek-V3-0324', 'Llama-4-Maverick-17B-128E-Instruct'],
+  },
+  moonshot: {
+    name: 'Moonshot Kimi', keyUrl: 'https://platform.moonshot.ai/console/api-keys', placeholder: 'sk-…', base: 'https://api.moonshot.ai/v1', audio: null,
+    priceUrl: 'https://platform.moonshot.ai/docs/pricing/chat', model: 'kimi-k2-0905-preview', models: ['kimi-k2-0905-preview', 'moonshot-v1-32k'],
+  },
+  qwen: {
+    name: 'Alibaba Qwen', keyUrl: 'https://modelstudio.console.alibabacloud.com', placeholder: 'sk-…', base: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', audio: null, json: true,
+    priceUrl: 'https://www.alibabacloud.com/help/en/model-studio/models', model: 'qwen-plus', models: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen-vl-max'],
+  },
+  zhipu: {
+    name: 'Z.ai GLM', keyUrl: 'https://z.ai/manage-apikey/apikey-list', placeholder: '', base: 'https://api.z.ai/api/paas/v4', audio: null, free: 'tier',
+    priceUrl: 'https://docs.z.ai/guides/overview/pricing', model: 'glm-4.5-flash', models: ['glm-4.5-flash', 'glm-4.5', 'glm-4.5v'],
   },
   pc: {
     name: 'Lessn PC (local AI)', keyUrl: '', placeholder: '', base: '', audio: null, json: false, local: true,
@@ -88,11 +154,14 @@ export function priceOf(provider, id, orPrice, base = '') {
     return null;
   }
   if (provider === 'pc') return { free: true, kind: 'local' };
+  if (PROVIDERS[provider]?.free === 'free') return { free: true, kind: 'free' };
+  if (/:free$/.test(id)) return { free: true, kind: 'free' };
   if (provider === 'custom') {
     return /localhost|127\.0\.0\.1|192\.168\.|\/\/10\.|\.local\b/.test(base) ? { free: true, kind: 'local' } : null;
   }
   const hit = (PRICES[provider] || []).find(([re]) => re.test(id));
-  return hit ? priceLabel(hit[1], hit[2], !!EXACT[provider]) : null;
+  if (hit) return priceLabel(hit[1], hit[2], !!EXACT[provider]);
+  return PROVIDERS[provider]?.free === 'tier' ? { free: true, kind: 'tier' } : null;
 }
 function priceLabel(i, o, exact) {
   // A typical homework answer: ~1,500 tokens in, ~600 tokens out
@@ -112,7 +181,7 @@ export function aiConfig(provider = S.settings.aiProvider || 'gemini') {
   const p = PROVIDERS[provider] || PROVIDERS.gemini;
   const model = (S.settings.aiModels || {})[provider] || (provider === 'gemini' && S.settings.aiModel) || p.model;
   const base = provider === 'custom' ? String(S.settings.aiBaseUrl || '').replace(/\/+$/, '') : provider === 'pc' ? pcBase() : p.base;
-  return { provider, p, key: store.aiKey(provider), model, base };
+  return { provider, p, key: store.aiKey(provider) || (p.noKey && S.settings[`aiOn_${provider}`] ? 'free' : ''), model, base };
 }
 const usable = (c) => !!c.key && !!c.model && ((c.provider !== 'custom' && c.provider !== 'pc') || !!c.base);
 /** The Lessn Hub on the paired PC forwards to its local AI (Ollama). */
@@ -194,7 +263,7 @@ async function callOpenAICompatible(c, { messages, system, json }) {
   const res = await fetch(`${c.base}/chat/completions`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json', Authorization: `Bearer ${c.key}`,
+      'Content-Type': 'application/json', ...(c.p.noKey && (!c.key || c.key === 'free') ? {} : { Authorization: `Bearer ${c.key}` }),
       ...(c.provider === 'openrouter' ? { 'X-Title': 'Lessn' } : {}),
     },
     body: JSON.stringify({
@@ -225,7 +294,7 @@ export async function complete(opts) {
 }
 
 async function callOnce(config, { messages, system, json, temperature }) {
-  if (!config.key) throw ERR('Add an AI key first.');
+  if (!config.key && !config.p.noKey) throw ERR('Add an AI key first.');
   const call = config.provider === 'gemini' ? callGemini : config.provider === 'anthropic' ? callClaude : callOpenAICompatible;
   const text = await call(config, { messages, system, json, temperature });
   if (!text) throw ERR('The AI did not answer. Try again.');
@@ -276,12 +345,15 @@ export async function listModels(provider, key, base) {
   } else if (provider === 'anthropic') {
     const j = await jsonOf(await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } }));
     items = (j.data || []).map((m) => ({ id: m.id, name: m.display_name }));
+  } else if (p.noList) {
+    items = p.models.map((id) => ({ id }));
   } else {
     const url = `${(provider === 'custom' ? base : provider === 'pc' ? pcBase() : p.base).replace(/\/+$/, '')}/models`;
     const j = await jsonOf(await fetch(url, { headers: { Authorization: `Bearer ${key}` } }));
     items = (j.data || j.models || []).map((m) => ({ id: m.id || m.name, name: m.name && m.name !== m.id ? m.name : '', pricing: m.pricing })).filter((m) => m.id);
     if (provider === 'openai') items = items.filter((m) => /^(gpt-|o\d|chatgpt)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding|instruct)/.test(m.id));
     if (provider === 'mistral') items = items.filter((m) => !/(embed|moderation|ocr|voxtral|transcribe)/.test(m.id));
+    items = items.filter((m) => !/(embed|whisper|tts|rerank|guard|moderation|dall-e|stable-diffusion|flux|vision-encoder|text-to-|audio-)/i.test(m.id));
   }
   const seen = new Set();
   let models = items.filter((m) => !seen.has(m.id) && seen.add(m.id))
@@ -312,9 +384,10 @@ Answer in ${LANG_NAME[lang] || 'German'}. Return ONLY a JSON object with these f
   "summary": "a clear summary of the lesson in 4-8 sentences",
   "topics": ["main topics covered"],
   "keyPoints": ["important facts, definitions, formulas or explanations a student should remember"],
-  "homework": ["homework or tasks that were given, with due dates if mentioned"],
+  "homework": [{"task": "the homework or task as given", "due": "YYYY-MM-DD if it can be worked out from the lesson date, otherwise empty", "dueText": "the due date as said, e.g. next Monday", "graded": true or false (true if the teacher said it will be graded, collected or counts for the mark), "importance": "high" or "normal"}],
   "tests": [{"what": "test / exam / presentation", "when": "date or time as said, e.g. next Tuesday", "date": "YYYY-MM-DD if it can be worked out from the lesson date, otherwise empty", "details": "what it covers"}],
-  "announcements": ["other organisational announcements"]
+  "announcements": ["other organisational announcements"],
+  "suggestions": ["2-4 short, concrete things the student could do now with an AI tutor, e.g. 'Practise 5 tasks on linear functions' or 'Make a study plan for the test on Friday'"]
 }
 Use empty arrays when something was not mentioned. Do not invent anything that was not said.${transcript ? `\n\nTRANSCRIPT:\n${transcript}` : ''}`;
 }
@@ -372,7 +445,7 @@ export async function summarizeAudio({ base64, mime = 'audio/mp4', lang = 'de', 
   }
   let out;
   try { out = parseJson(text); } catch { out = { title: '', summary: text }; }
-  for (const k of ['topics', 'keyPoints', 'homework', 'tests', 'announcements']) if (!Array.isArray(out[k])) out[k] = [];
+  for (const k of ['topics', 'keyPoints', 'homework', 'tests', 'announcements', 'suggestions']) if (!Array.isArray(out[k])) out[k] = [];
   return out;
 }
 

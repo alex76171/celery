@@ -5,13 +5,13 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '3.0.0';
+export const VERSION = '4.0.0';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+export const icon = (name, cls = '') => `<svg class="ic ${cls}" data-ic="${name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 export const plugin = (name) => window.Capacitor?.Plugins?.[name];
 export const safe = (p) => { try { p?.catch?.(() => {}); } catch { /* ignore */ } };
 
@@ -133,7 +133,10 @@ export const THEMES = [
   ['auto', 'Auto'], ['material-light', 'Material Light'], ['material-dark', 'Material Dark'],
   ['glass-light', 'Liquid Glass Light'], ['glass-dark', 'Liquid Glass Dark'], ['amoled', 'Black'],
   ['oneui-light', 'One UI Light'], ['oneui-dark', 'One UI Dark'],
+  ['windows-light', 'Windows 11 Light'], ['windows-dark', 'Windows 11 Dark'], ['ios-light', 'iOS Light'], ['ios-dark', 'iOS Dark'],
   ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'], ['paper', 'Paper'], ['neon', 'Neon'], ['pastel', 'Pastel'],
+  ['nord', 'Nord'], ['dracula', 'Dracula'], ['latte', 'Catppuccin Latte'], ['mocha', 'Catppuccin Mocha'], ['rosepine', 'Rosé Pine'],
+  ['solarized', 'Solarized'], ['mint', 'Mint'], ['lavender', 'Lavender'], ['contrast', 'High contrast'],
 ];
 // family = surface style, motion = how screens animate in, font = default font of the theme
 const THEME_META = {
@@ -150,10 +153,26 @@ const THEME_META = {
   paper: { family: 'paper', motion: 'flip', font: 'lora' },
   neon: { family: 'neon', motion: 'flicker', font: 'space', dark: true },
   pastel: { family: 'material', motion: 'bounce', font: 'nunito' },
+  'windows-light': { family: 'fluent', motion: 'fluent', font: 'segoe' },
+  'windows-dark': { family: 'fluent', motion: 'fluent', font: 'segoe', dark: true },
+  'ios-light': { family: 'cupertino', motion: 'spring', font: 'system' },
+  'ios-dark': { family: 'cupertino', motion: 'spring', font: 'system', dark: true },
+  nord: { family: 'material', motion: 'fade', font: 'manrope', dark: true },
+  dracula: { family: 'material', motion: 'bloom', font: 'figtree', dark: true },
+  latte: { family: 'material', motion: 'bounce', font: 'jakarta' },
+  mocha: { family: 'material', motion: 'bounce', font: 'jakarta', dark: true },
+  rosepine: { family: 'glass', motion: 'blur', font: 'quicksand', dark: true },
+  solarized: { family: 'paper', motion: 'slide', font: 'source-serif' },
+  mint: { family: 'oneui', motion: 'spring', font: 'dm-sans' },
+  lavender: { family: 'glass', motion: 'bloom', font: 'lexend' },
+  contrast: { family: 'material', motion: 'fade', font: 'atkinson', dark: true },
 };
 export const FONTS = [
   ['theme', 'Theme default'], ['system', 'System'], ['inter', 'Inter'], ['poppins', 'Poppins'], ['nunito', 'Nunito'],
   ['outfit', 'Outfit'], ['space', 'Space Grotesk'], ['lora', 'Lora'], ['mono', 'JetBrains Mono'],
+  ['segoe', 'Segoe UI (Windows)'], ['manrope', 'Manrope'], ['dm-sans', 'DM Sans'], ['jakarta', 'Plus Jakarta Sans'], ['figtree', 'Figtree'],
+  ['lexend', 'Lexend (easy reading)'], ['quicksand', 'Quicksand'], ['comfortaa', 'Comfortaa'], ['rubik', 'Rubik'], ['montserrat', 'Montserrat'],
+  ['fraunces', 'Fraunces'], ['source-serif', 'Source Serif'], ['caveat', 'Caveat (handwriting)'], ['atkinson', 'Atkinson Hyperlegible'], ['dyslexic', 'OpenDyslexic'],
 ];
 const LEGACY = { system: 'auto', light: 'material-light', dark: 'material-dark' };
 export function currentTheme() {
@@ -302,14 +321,16 @@ export function openMenu(anchor, options, value, onPick, title = '') {
   menuState = { onPick };
   // options: [value, label, sub?, tag?]  tag: { text, cls } shown as a pill (e.g. "Free")
   const item = ([v, l, sub, tag]) => `<button type="button" class="pop-item ${sub ? 'two' : ''} ${String(v) === String(value) ? 'on' : ''}" data-v="${esc(v)}" data-q="${esc(`${v} ${l} ${tag?.text || ''}`.toLowerCase())}"><span class="pi-main"><span>${esc(l)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${tag ? `<em class="pi-tag ${esc(tag.cls || '')}">${esc(tag.text)}</em>` : ''}${String(v) === String(value) ? icon('check') : ''}</button>`;
-  const search = options.length > 12;
-  root.innerHTML = `<div class="menu-scrim"></div><div class="pop-menu ${search ? 'has-search' : ''}" role="listbox">${title ? `<div class="pop-title">${esc(title)}</div>` : ''}${search ? `<label class="pop-search">${icon('search')}<input type="search" placeholder="${esc(t('Search'))}" autocomplete="off" autocapitalize="off"></label>` : ''}<div class="pop-list">${options.map(item).join('')}</div></div>`;
+  // phones: a full-screen picker; PC and tablets: a popover next to the button
+  const full = !document.documentElement.classList.contains('desktop') && window.innerWidth < 760;
+  const search = options.length > (full ? 9 : 12);
+  root.innerHTML = `<div class="menu-scrim"></div><div class="pop-menu ${full ? 'full' : ''} ${search ? 'has-search' : ''}" role="listbox">${full ? `<div class="pop-head"><button type="button" class="icon-btn pop-close" aria-label="${esc(t('Close'))}">${icon('x')}</button><b>${esc(title || t('Choose'))}</b><span></span></div>` : title ? `<div class="pop-title">${esc(title)}</div>` : ''}${search ? `<label class="pop-search">${icon('search')}<input type="search" placeholder="${esc(t('Search'))}" autocomplete="off" autocapitalize="off"></label>` : ''}<div class="pop-list">${options.map(item).join('')}</div></div>`;
   const pop = $('.pop-menu', root);
   if (search) {
     const q = $('.pop-search input', pop);
     q.oninput = () => { const v = q.value.trim().toLowerCase(); for (const b of pop.querySelectorAll('.pop-item')) b.hidden = !!v && !b.dataset.q.includes(v); };
   }
-  placePopover(pop, anchor);
+  if (full) { $('.pop-close', pop).onclick = () => closeMenu(); root.classList.add('full'); } else { root.classList.remove('full'); placePopover(pop, anchor); }
   root.getBoundingClientRect();
   root.classList.add('open');
   $('.pop-item.on', pop)?.scrollIntoView({ block: 'center' });
@@ -407,13 +428,15 @@ document.addEventListener('click', (e) => {
     e.stopPropagation();
     const d = DDS[b.dataset.ddOpen];
     if (!d) return;
+    let title = b.dataset.title || b.querySelector('.row-text b')?.textContent || '';
+    for (let p = b.previousElementSibling; !title && p; p = p.previousElementSibling) if (p.classList.contains('lbl')) title = p.textContent;
     openMenu(b, d.options, d.value, (v, label) => {
       d.value = v;
       const txt = b.querySelector('.dd-val, .dd-text');
       if (txt) txt.textContent = label;
       if (d.act === 'form') { const inp = document.getElementById(d.key); if (inp) inp.value = v; ddHandlers.pick?.('form', d.key, v, label, b); return; }
       ddHandlers.pick?.(d.act, d.key, v, label, b);
-    });
+    }, title);
     return;
   }
   const dbtn = e.target.closest?.('[data-date-open]');

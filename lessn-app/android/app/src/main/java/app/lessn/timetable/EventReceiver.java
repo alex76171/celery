@@ -22,6 +22,8 @@ public class EventReceiver extends BroadcastReceiver {
     static final String ACTION_YES = "app.lessn.timetable.PRESENT_YES";
     static final String ACTION_NO = "app.lessn.timetable.PRESENT_NO";
     static final int PRESENCE_NOTIF = 4242;
+    static final String ACTION_REC_NO = "app.lessn.timetable.REC_NO";
+    static final String ACTION_CHECKIN_YES = "app.lessn.timetable.CHECKIN_YES";
 
     @Override
     public void onReceive(Context ctx, Intent intent) {
@@ -30,6 +32,15 @@ public class EventReceiver extends BroadcastReceiver {
         if (ACTION_YES.equals(action) || ACTION_NO.equals(action)) {
             Scheduler.logPresence(ctx, intent.getStringExtra("date"), ACTION_YES.equals(action) ? "present" : "absent");
             NotificationManagerCompat.from(ctx).cancel(PRESENCE_NOTIF);
+            return;
+        }
+        if (ACTION_REC_NO.equals(action)) {
+            NotificationManagerCompat.from(ctx).cancel(intent.getIntExtra("nid", 0));
+            return;
+        }
+        if (ACTION_CHECKIN_YES.equals(action)) {
+            Scheduler.logCheckin(ctx, intent.getStringExtra("exam"), "yes");
+            NotificationManagerCompat.from(ctx).cancel(intent.getIntExtra("nid", 0));
             return;
         }
         if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
@@ -45,8 +56,11 @@ public class EventReceiver extends BroadcastReceiver {
             String type = e.optString("type");
             switch (type) {
                 case "remind":
-                    Notifs.show(ctx, e.optInt("id", (int) (e.optLong("at") / 1000)), Notifs.CH_LESSONS, e.optString("title"), e.optString("body"));
+                    Notifs.showTo(ctx, e.optInt("id", (int) (e.optLong("at") / 1000)), e.optString("channel", "").isEmpty() ? Notifs.CH_LESSONS : Notifs.CH_PLANNER,
+                        e.optString("title"), e.optString("body"), e.optString("open", null));
                     break;
+                case "recask": askRecord(ctx, e); break;
+                case "checkin": askCheckin(ctx, e); break;
                 case "dndOn": Scheduler.setDnd(ctx, true); break;
                 case "dndOff": Scheduler.setDnd(ctx, false); break;
                 case "presence": presence = e; break;
@@ -55,6 +69,31 @@ public class EventReceiver extends BroadcastReceiver {
         }
         Scheduler.scheduleNext(ctx);
         if (presence != null) checkPresence(ctx, presence);
+    }
+
+    /** "Record Maths?" with a Record button that arms the recorder for the lesson (works with the screen locked). */
+    private void askRecord(Context ctx, JSONObject e) {
+        int nid = 6000 + (int) ((e.optLong("start") / 60000) % 1000);
+        int flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT;
+        Intent arm = new Intent(ctx, RecorderService.class).setAction(RecorderService.ACTION_ARM)
+            .putExtra("startAt", e.optLong("start")).putExtra("endAt", e.optLong("end"))
+            .putExtra("title", e.optString("recTitle", "Lesson")).putExtra("meta", e.optString("meta", "{}")).putExtra("nid", nid);
+        PendingIntent armPi = Build.VERSION.SDK_INT >= 26 ? PendingIntent.getForegroundService(ctx, nid, arm, flags) : PendingIntent.getService(ctx, nid, arm, flags);
+        Intent no = new Intent(ctx, EventReceiver.class).setAction(ACTION_REC_NO).putExtra("nid", nid);
+        Notifs.showTo(ctx, nid, Notifs.CH_RECASK, e.optString("title"), e.optString("body"), "recorder",
+            new NotificationCompat.Action(0, e.optString("yes", "Record"), armPi),
+            new NotificationCompat.Action(0, e.optString("no", "Not now"), PendingIntent.getBroadcast(ctx, nid + 1, no, flags)));
+    }
+
+    /** "Have you studied for …?" — Yes is noted, Not yet opens the AI suggestions. */
+    private void askCheckin(Context ctx, JSONObject e) {
+        String exam = e.optString("exam");
+        int nid = 7000 + (Math.abs(exam.hashCode()) % 900);
+        int flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT;
+        Intent yes = new Intent(ctx, EventReceiver.class).setAction(ACTION_CHECKIN_YES).putExtra("exam", exam).putExtra("nid", nid);
+        Notifs.showTo(ctx, nid, Notifs.CH_PLANNER, e.optString("title"), e.optString("body"), "checkin:" + exam,
+            new NotificationCompat.Action(0, e.optString("yes", "Yes"), PendingIntent.getBroadcast(ctx, nid, yes, flags)),
+            new NotificationCompat.Action(0, e.optString("no", "Not yet"), Notifs.openApp(ctx, "checkin:" + exam)));
     }
 
     private void checkPresence(Context ctx, JSONObject e) {

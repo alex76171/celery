@@ -27,9 +27,10 @@ export function viewMore() {
     ['directions', 'navigation', t('Directions to school'), '', 'directions'],
     ['notif-settings', 'bell', t('Notifications'), '', 'notif-settings'],
     ['pc', 'monitor', window.Capacitor?.isDesktop ? t('Phone') : t('PC'), '', 'nav'],
+    ['links', 'link', t('Linked apps'), '', 'nav'],
   ];
   return `<div class="pad">
-    <div class="account"${stagger(0)}><div class="avatar">${icon('user')}</div><div><b>${esc(a.username)}</b><small>${esc(a.schoolName || a.school)}</small></div></div>
+    <button class="account"${stagger(0)} data-act="profiles"><div class="avatar">${icon('user')}</div><div><b>${esc(a.username)}</b><small>${esc(a.schoolName || a.school)}</small></div><span class="acc-switch">${icon('chevrons-up-down')}</span></button>
     <div class="section-title">${esc(t('More'))}</div>
     <div class="card list-card"${stagger(1)}>${tiles.map(([view, ic, label, tag, act]) => `<button class="row" data-act="${act}" data-view="${view}">
       <span class="row-ic tint" style="--c:${PALETTE[hash(view) % PALETTE.length]}">${icon(ic)}</span><span class="row-text"><b>${esc(label)}</b></span>${tag ? `<em class="tag">${tag}</em>` : ''}${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>
@@ -364,9 +365,14 @@ export function openSummary(id) {
     ${r.tests?.length ? `<div class="test-alert">${icon('graduation-cap')}<div>${r.tests.map((ts) => `<b>${esc(ts.what || t('Test'))}</b><span>${esc([ts.when, ts.details].filter(Boolean).join(' · '))}</span>`).join('')}</div></div>` : ''}
     <div class="section-title">${icon('book-open')}${esc(t('Summary'))}</div><div class="card"><p class="sum-text">${esc(r.summary || '')}</p></div>
     ${list(t('Key points'), 'star', r.keyPoints)}
-    ${list(t('Homework'), 'clipboard-list', r.homework)}
+    ${hwItems(r).length ? `<div class="section-title">${icon('clipboard-list')}${esc(t('Homework'))}<button class="link" data-act="sum-hw-all" data-id="${id}">${icon('plus', 'mini')}${esc(t('Add all'))}</button></div>
+      <div class="card">${hwItems(r).map((h, i) => `<div class="d-row sum-hw"><span class="dot-c" style="--c:${h.graded ? '#e5484d' : colorFor(x.subject)}"></span><div><span>${esc(h.task)}</span><small>${[h.due ? esc(fmt(new Date(h.due), { weekday: 'short', day: 'numeric', month: 'short' })) : h.dueText ? esc(h.dueText) : esc(t('No due date')), h.graded ? `<b class="bad">${esc(t('Graded'))}</b>` : '', h.importance === 'high' ? `<b class="warn">${esc(t('Important'))}</b>` : ''].filter(Boolean).join(' · ')}</small></div>
+        <button class="icon-btn" data-act="sum-hw-add" data-id="${id}" data-i="${i}" aria-label="${esc(t('Add'))}">${icon(x.added?.[i] ? 'check' : 'plus')}</button></div>`).join('')}</div>` : ''}
+    ${(r.tests || []).length ? `<div class="card">${(r.tests || []).map((ts, i) => `<button class="row" data-act="sum-test-add" data-id="${id}" data-i="${i}"><span class="row-ic tint" style="--c:#8e4ec6">${icon('calendar-plus')}</span><span class="row-text"><b>${esc(t('Add "{what}" to the calendar', { what: ts.what || t('Test') }))}</b><small>${esc(ts.date || ts.when || '')}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : ''}
     ${list(t('Announcements'), 'megaphone', r.announcements)}
-    <div class="card">${row('sum-del', 'trash-2', t('Delete summary'), '', `data-id="${id}"`)}</div>`, { full: true });
+    <div class="section-title">${icon('sparkles')}${esc(t('What the AI suggests'))}</div>
+    <div class="ai-sugs list">${[...(r.suggestions || []), t('Make a study plan from this lesson'), t('Quiz me on this lesson'), t('Make flashcards as PDF')].slice(0, 6).map((sg, i) => `<button class="ai-sug" data-act="sum-suggest" data-id="${id}" data-text="${esc(sg)}" style="--i:${i}"><b>${esc(sg)}</b><span class="ai-sug-ic">${icon(i < (r.suggestions || []).length ? 'lightbulb' : ['list-checks', 'circle-help', 'file-text'][i - (r.suggestions || []).length] || 'sparkles')}</span></button>`).join('')}</div>
+    <div class="card">${row('sum-chat', 'message-square', t('Ask the AI about this lesson'), '', `data-id="${id}"`)}${row('sum-pdf', 'file-down', t('Save summary as PDF'), '', `data-id="${id}"`)}${row('sum-del', 'trash-2', t('Delete summary'), '', `data-id="${id}"`)}</div>`, { full: true });
 }
 
 export function deleteSummary(id) {
@@ -381,13 +387,34 @@ export function deleteSummary(id) {
 // ---------------------------------------------------------------- Notifications sheet
 export async function openNotifSettings() {
   const st = await native.status();
+  const health = await native.notifHealth();
   const s = S.settings;
+  const fixes = health ? [
+    !health.enabled && ['notif-perm', 'bell-off', t('Notifications are turned off for Lessn'), t('Tap to allow them')],
+    !health.exact && ['notif-exact', 'clock', t('Exact alarms are off'), t('Reminders may come a few minutes late. Tap to allow.')],
+    !health.battery && ['notif-battery', 'battery', t('Battery saver can delay reminders'), t('Tap and choose "Allow" (or "Unrestricted")')],
+  ].filter(Boolean) : [];
   openSheet(() => `<h2 class="sheet-title">${icon('bell')}${esc(t('Notifications'))}</h2>
+    ${fixes.length ? `<div class="card warn-card">${fixes.map(([act, ic, title, sub]) => `<button class="row" data-act="${act}"><span class="row-ic tint" style="--c:#e5484d">${icon(ic)}</span><span class="row-text"><b>${esc(title)}</b><small>${esc(sub)}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>`
+      : health ? `<div class="notice ok">${icon('circle-check')}<span>${esc(t('Notifications are set up correctly.'))}${health.pending ? ` ${esc(t('{n} planned', { n: health.pending }))}` : ''}</span></div>` : ''}
     <div class="card">
       ${toggle('notifyLessons', t('Lesson reminders'), t('A notification before each lesson'), 'notif-toggle')}
       ${s.notifyLessons ? dd(t('Remind me'), 'notifyMinutes', [['2', '2 min'], ['5', '5 min'], ['10', '10 min'], ['15', '15 min']], s.notifyMinutes) : ''}
-      ${toggle('notifyChanges', t('Change alerts'), t('Cancelled lessons, substitutions and room changes'), 'notif-toggle')}
+      ${toggle('notifyChanges', t('Change alerts'), t('Cancelled lessons, substitutions and room changes, checked every 30 minutes even when Lessn is closed'), 'notif-toggle')}
     </div>
+    <div class="section-title">${icon('graduation-cap')}${esc(t('Studying'))}</div>
+    <div class="card">
+      ${toggle('studyCheckins', t('Ask if I have studied'), t('Before each exam or test, with help from the AI if not yet'), 'notif-toggle')}
+      ${s.studyCheckins !== false ? dd(t('When to ask'), 'checkinDays', [['7,3,1', t('7, 3 and 1 day before')], ['3,1', t('3 and 1 day before')], ['5,2', t('5 and 2 days before')], ['14,7,3,1', t('2 weeks, 1 week, 3 days, 1 day before')], ['1', t('The day before')]], s.checkinDays || '7,3,1') : ''}
+      ${s.studyCheckins !== false ? dd(t('At'), 'checkinHour', [['15', '15:00'], ['16', '16:00'], ['17', '17:00'], ['18', '18:00'], ['19', '19:00'], ['20', '20:00']], String(s.checkinHour ?? 17)) : ''}
+    </div>
+    <div class="section-title">${icon('mic')}${esc(t('Lesson recording'))}</div>
+    <div class="card">
+      ${toggle('recAsk', t('Ask before each lesson if I want to record'), t('Tap Record in the notification: it starts with the lesson and stops at the end, even with the phone locked'), 'notif-toggle')}
+      ${s.recAsk ? dd(t('Ask'), 'recAskMinutes', [['1', t('1 minute before')], ['3', t('3 minutes before')], ['5', t('5 minutes before')], ['10', t('10 minutes before')]], String(s.recAskMinutes ?? 3)) : ''}
+      ${s.recAsk ? `<button class="row" data-act="rec-subjects"><span class="row-text"><b>${esc(t('Subjects'))}</b><small>${esc((s.recAskSubjects || []).length ? (s.recAskSubjects || []).map((k) => subjLabel(k) || k).join(', ') : t('All subjects'))}</small></span>${icon('chevron-right', 'row-chev')}</button>` : ''}
+    </div>
+    <button class="btn small ghost center-btn" data-act="notif-test">${icon('bell')}${esc(t('Send a test notification'))}</button>
     ${store.iserv() ? `<div class="section-title">${icon('school')}IServ</div><div class="card">${toggle('iservNotify', t('IServ notifications'), t('New messages and IServ notifications, checked every 15 minutes'), 'iserv-notify')}</div>` : ''}
     <div class="section-title">${icon('bell-off')}${esc(t('Do not disturb'))}</div>
     <div class="card">
@@ -540,3 +567,99 @@ export function openCustomize() {
 }
 
 export { currentTheme, inDays, startOfDay };
+
+// ---------------------------------------------------------------- v4: summary actions, record-next card
+/** Homework from a summary as objects (older summaries had plain strings). */
+export function hwItems(r) {
+  return (r.homework || []).map((h) => (typeof h === 'string' ? { task: h } : { task: h.task || h.text || '', due: h.due || '', dueText: h.dueText || h.when || '', graded: !!h.graded, importance: h.importance || 'normal' })).filter((h) => h.task);
+}
+export async function summaryHomework(id, i) {
+  const x = store.summaries().find((s) => s.id === id);
+  if (!x) return;
+  const items = hwItems(x.result || {});
+  const pick = i == null ? items.map((_, k) => k) : [Number(i)];
+  const A = await import('./assist.js');
+  const now = toUntisDate(new Date());
+  const add = pick.filter((k) => !x.added?.[k]).map((k) => {
+    const h = items[k];
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(h.due) ? Number(h.due.replace(/-/g, '')) : toUntisDate(addDays(new Date(), 7));
+    return { id: `h${Date.now()}${k}`, subject: x.subject, text: `${h.task}${h.graded ? ` (${t('graded')})` : ''}`, due, date: now, graded: h.graded, fromSummary: id };
+  });
+  if (!add.length) { toast(t('Already added')); return; }
+  A.addMyHomework(add);
+  const added = { ...(x.added || {}) };
+  pick.forEach((k) => { added[k] = true; });
+  store.setSummaries(store.summaries().map((s) => (s.id === id ? { ...s, added } : s)));
+  toast(t('{n} homework added', { n: add.length }));
+  rerenderSheet();
+}
+export async function summaryTest(id, i) {
+  const x = store.summaries().find((s) => s.id === id);
+  const ts = x?.result?.tests?.[Number(i)];
+  if (!ts) return;
+  const { openEventForm } = await import('./planner.js');
+  closeSheet(true);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(ts.date || '') ? Number(ts.date.replace(/-/g, '')) : toUntisDate(addDays(new Date(), 7));
+  setTimeout(() => openEventForm(null, { type: /pr[äa]sent|referat|vortrag/i.test(ts.what || '') ? 'presentation' : /klausur|schulaufgabe|exam/i.test(ts.what || '') ? 'exam' : 'test', date, subject: x.subject }), 300);
+  setTimeout(() => { const el = document.getElementById('ev-title'); if (el) el.value = ts.what || t('Test'); const n = document.getElementById('ev-notes'); if (n) n.value = [ts.details, ts.when].filter(Boolean).join(' · '); }, 700);
+}
+export async function summaryChat(id, text) {
+  const x = store.summaries().find((s) => s.id === id);
+  if (!x) return;
+  const r = x.result || {};
+  const A = await import('./assist.js');
+  closeSheet(true);
+  A.newChat({ title: r.title || t('Lesson summary'), kind: 'free', subject: x.subject, context: `Summary of the student's lesson (${subjLabel(x.subject) || ''}, ${x.date}): ${r.title}. ${r.summary}\nTopics: ${(r.topics || []).join(', ')}\nKey points: ${(r.keyPoints || []).join('; ')}\nHomework: ${hwItems(r).map((h) => h.task).join('; ')}` });
+  if (text) setTimeout(() => A.sendAI(text), 350);
+}
+export async function summaryPdf(id) {
+  const x = store.summaries().find((s) => s.id === id);
+  if (!x) return;
+  const r = x.result || {};
+  const md = `# ${r.title || t('Lesson summary')}\n${subjLabel(x.subject) || ''} · ${fmt(fromUntisDate(x.date), { weekday: 'long', day: 'numeric', month: 'long' })}\n\n${r.summary || ''}\n\n## ${t('Key points')}\n${(r.keyPoints || []).map((k) => `- ${k}`).join('\n')}\n\n## ${t('Homework')}\n${hwItems(r).map((h) => `- ${h.task}${h.due ? ` (${h.due})` : ''}${h.graded ? ` – ${t('Graded')}` : ''}`).join('\n') || '-'}\n`;
+  const { BLOCKS, saveBlock } = await import('./rich.js');
+  const bid = `sum${Date.now()}`;
+  BLOCKS[bid] = { name: `${(r.title || 'Lesson').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)}.pdf`, code: md };
+  saveBlock(bid, true);
+}
+/** Home card: "Record Maths at 09:45?" when the next lesson starts soon (works with the phone locked after that). */
+export function recordNextCard() {
+  if (!S.settings.recAsk || !hasNative()) return '';
+  const now = new Date();
+  const nowMin = now.getHours() * 100 + now.getMinutes();
+  const list = (lessonsToday() || []).filter((l) => l.code !== 'cancelled' && l.start > nowMin);
+  const next = list[0];
+  if (!next) return '';
+  const mins = (Math.floor(next.start / 100) * 60 + next.start % 100) - (now.getHours() * 60 + now.getMinutes());
+  if (mins > 15) return '';
+  const k = `${toUntisDate(now)}-${next.start}`;
+  if (S.recArmed === k) return `<div class="checkin rec-armed">${icon('mic', 'live')}<div><b>${esc(t('Recording is set up'))}</b><small>${esc(t('{subject} starts at {time}. You can lock the phone.', { subject: subjName(next), time: fmtTime(next.start) }))}</small></div></div>`;
+  return `<div class="checkin">${icon('mic')}<div><b>${esc(t('Record {subject}?', { subject: subjName(next) }))}</b><small>${esc(t('Starts at {time}. Recording starts and stops by itself, even with the phone locked.', { time: fmtTime(next.start) }))}</small>
+    <div class="ci-btns"><button class="chip ai-chip" data-act="rec-arm" data-start="${next.start}" data-end="${chainEnd(list, next)}" data-subj="${esc(subjKey(next))}">${icon('mic')}${esc(t('Record'))}</button></div></div></div>`;
+}
+function lessonsToday() { const d = startOfDay(new Date()); const m = addDays(d, -((d.getDay() + 6) % 7)); const data = weekData(m, ownElement()); return data ? prepareDay(data, d) : null; }
+function chainEnd(list, first) { let end = first.end; for (const l of list) if (l.start >= end && l.start - end <= 20 && subjKey(l) === subjKey(first)) end = l.end; return end; }
+export async function armNext(start, end, subj) {
+  const st = await native.request(['microphone', 'notifications']).catch(() => ({}));
+  if (st.microphone && st.microphone !== 'granted') { toast(t('Microphone permission is needed'), 'err'); return; }
+  const at = (hhmm) => { const d = new Date(); d.setHours(Math.floor(hhmm / 100), hhmm % 100, 0, 0); return d.getTime(); };
+  try {
+    await native.armRecording({ startAt: at(Number(start)), endAt: at(Number(end)), title: subjLabel(subj) || subj || t('Lesson'), meta: JSON.stringify({ subject: subj, date: toUntisDate(new Date()), start: Number(start), end: Number(end) }) });
+    S.recArmed = `${toUntisDate(new Date())}-${start}`;
+    toast(t('Recording is set up'));
+    render();
+  } catch (e) { toast(t(e.message === 'permission' ? 'Microphone permission is needed' : e.message), 'err'); }
+}
+export function openRecSubjects() {
+  const subs = new Map();
+  for (const w of Object.values(S.weeks || {})) for (const l of (Array.isArray(w) ? w : [])) for (const x of l.subjects || []) if (x?.name) subs.set(x.name, x.long || x.name);
+  const cur = new Set(S.settings.recAskSubjects || []);
+  openSheet(() => `<h2 class="sheet-title">${icon('mic')}${esc(t('Ask for these subjects'))}</h2><p class="hint">${esc(t('None selected = all subjects'))}</p>
+    <div class="card">${[...subs.entries()].sort().map(([k, long]) => `<label class="row hw-found"><input type="checkbox" data-recsub="${esc(k)}" ${cur.has(k) ? 'checked' : ''}><span class="row-text"><b>${esc(subjLabel(k) || long)}</b></span></label>`).join('') || `<div class="row"><small>${esc(t('Subjects appear here once your timetable has loaded.'))}</small></div>`}</div>
+    <button class="btn" data-act="rec-subjects-save">${esc(t('Save'))}</button>`);
+}
+export function saveRecSubjects() {
+  setS('recAskSubjects', [...document.querySelectorAll('[data-recsub]')].filter((x) => x.checked).map((x) => x.dataset.recsub));
+  scheduleNative();
+  closeSheet();
+}

@@ -5,6 +5,7 @@ import {
 import { native } from './native.js';
 import { client as iservUiClient, refreshHub } from './iserv-ui.js';
 import { render, updateHeader } from './app.js';
+import { plannerEvents, recordAskEvents, applyHolidayNames, nameHolidaysWithAI } from './planner.js';
 
 // ---------------------------------------------------------------- cache keys
 export function ownElement() {
@@ -63,7 +64,7 @@ export async function loadMeta(force = false) {
   await run(async () => {
     const [grid, hol] = await Promise.allSettled([S.api.timegrid(), S.api.holidays()]);
     if (grid.status === 'fulfilled') { S.timegrid = grid.value; store.setCache('timegrid', grid.value); }
-    if (hol.status === 'fulfilled') { S.holidays = hol.value; store.setCache('holidays', hol.value); }
+    if (hol.status === 'fulfilled') { S.holidays = hol.value; store.setCache('holidays', hol.value); applyHolidayNames(); setTimeout(nameHolidaysWithAI, 3000); }
   }, { quiet: true });
 }
 
@@ -339,6 +340,7 @@ export function buildEvents() {
       }
     }
   }
+  try { events.push(...plannerEvents(), ...recordAskEvents(days)); } catch (e) { console.warn(e); }
   return events.sort((a, b) => a.at - b.at);
 }
 
