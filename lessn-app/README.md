@@ -4,7 +4,7 @@ Lessn is an unofficial Android and Windows app for WebUntis. It shows your timet
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-4.0.0.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-4.0.1.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
@@ -29,7 +29,7 @@ If the search can't find your school, tap **Enter the server manually** and type
 
 ## Lessn for Windows
 
-The installer is `lessn-desktop/Lessn-Setup-4.0.0.exe` (download it from GitHub on the PC).
+The installer is `lessn-desktop/Lessn-Setup-4.0.1.exe` (download it from GitHub on the PC).
 
 1. Run it. Windows SmartScreen may warn because the installer is not signed: click **More info → Run anyway**.
 2. Choose the folder and options: desktop shortcut, **Start with Windows (in the tray)** and **Allow phones in your network (firewall)** (asks for admin rights once; without it Windows asks the first time your phone connects — choose *Private networks*).
