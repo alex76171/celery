@@ -1,7 +1,7 @@
 // App shell: navigation, rendering, gestures, events and startup.
 import {
   S, t, $, $$, esc, icon, fmt, relDay, weekNumber, sameDay, startOfDay, addDays, mondayOf, toUntisDate, fromUntisDate, pad,
-  store, applyTheme, syncBars, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
+  store, applyTheme, syncBars, ddHandlers, uiConfirm, uiPrompt, closeMenu, closeDialog, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
 } from './core.js';
 import { Untis } from './api.js';
 import { native } from './native.js';
@@ -227,11 +227,11 @@ function setSetting(key, value, { sheet = true } = {}) {
 
 function exportSettings() {
   const json = JSON.stringify(S.settings);
-  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(json).then(() => toast(t('Copied to clipboard')), () => prompt(t('Copy this text'), json));
-  else prompt(t('Copy this text'), json);
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(json).then(() => toast(t('Copied to clipboard')), () => uiPrompt(t('Copy this text'), json, { multiline: true }));
+  else uiPrompt(t('Copy this text'), json, { multiline: true });
 }
-function importSettings() {
-  const txt = prompt(t('Paste your customization text'));
+async function importSettings() {
+  const txt = await uiPrompt(t('Paste your customization text'), '', { multiline: true });
   if (!txt) return;
   try {
     S.settings = { ...S.settings, ...JSON.parse(txt) };
@@ -281,10 +281,10 @@ function onClick(e) {
     case 'refresh-all': S.weeks = {}; refresh(); toast(t('Refreshing')); break;
     case 'clear-cache': store.clearCache(); S.weeks = {}; S.homework = null; S.exams = null; S.grades = null; refresh(); toast(t('Offline data cleared')); break;
     case 'logout':
-      if (confirm(t('Sign out of this account?'))) {
+      uiConfirm(t('Sign out of this account?'), { ok: t('Sign out'), danger: true }).then((ok) => { if (!ok) return;
         S.api?.logout(); store.clearAccount(); store.clearCache(); store.setIServ(null); native.schedule([]);
         location.reload();
-      }
+      });
       break;
     case 'version': versionTap(); break;
     case 'set': setSetting(d.key, d.val); break;
@@ -298,7 +298,7 @@ function onClick(e) {
     case 'export-settings': exportSettings(); break;
     case 'import-settings': importSettings(); break;
     case 'reset-custom':
-      if (confirm(t('Reset all customization to default?'))) { store.resetCustomization(); S.settings = store.settings(); applyTheme(); render(); rerenderSheet(); }
+      uiConfirm(t('Reset all customization to default?'), { danger: true }).then((ok) => { if (ok) { store.resetCustomization(); S.settings = store.settings(); applyTheme(); render(); rerenderSheet(); } });
       break;
     // grades
     case 'grade-add': openGradeForm(); break;
@@ -316,7 +316,7 @@ function onClick(e) {
     case 'iserv-connect': IS.connect(); break;
     case 'iserv-notify': { const v = !S.settings.iservNotify; setS('iservNotify', v); const a = store.iserv(); native.iservBackground({ enabled: v && !!a, host: a?.host, username: a?.username, password: a?.password, chats: true }); rerenderSheet(); render(); break; }
     case 'iserv-open': if (d.url) IS.iservOpenUrl(d.url); else IS.iservOpen(d.path); break;
-    case 'iserv-logout': if (confirm(t('Disconnect IServ?'))) { IS.disconnect(); native.iservBackground({ enabled: false }); } break;
+    case 'iserv-logout': uiConfirm(t('Disconnect IServ?'), { danger: true }).then((ok) => { if (ok) { IS.disconnect(); native.iservBackground({ enabled: false }); } }); break;
     case 'open-room': IS.openRoom(d.id); break;
     case 'chat-attach': IS.openAttachMenu(); break;
     case 'pick': $(`#${d.input}`)?.click(); break;
@@ -327,7 +327,7 @@ function onClick(e) {
     case 'img-view': IS.viewImage(d.mxc); break;
     case 'msg-file': IS.downloadChatFile(d.mxc, d.name); break;
     case 'msg-copy': IS.copyMessage(d.id); break;
-    case 'msg-delete': if (confirm(t('Delete this message for everyone?'))) IS.deleteMessage(d.id); break;
+    case 'msg-delete': uiConfirm(t('Delete this message for everyone?'), { ok: t('Delete'), danger: true }).then((ok) => { if (ok) IS.deleteMessage(d.id); }); break;
     case 'new-chat': IS.openNewChat(); break;
     case 'start-dm': IS.startDirect(d.id); break;
     case 'file-open': IS.openFile(d.p); break;
@@ -339,6 +339,7 @@ function onClick(e) {
     case 'is-task': IS.openTask(d.id); break;
     case 'is-tasks-retry': S.iservTasks = null; IS.retry('tasks'); render(); break;
     case 'hw-add': A.openHomeworkForm(); break;
+    case 'hw-add-for': closeSheet(true); A.openHomeworkForm({ subject: d.subj, date: Number(d.date) }); break;
     case 'hw-save': A.saveHomework(); break;
     case 'hw-open': A.openHomework(d.key); break;
     case 'hw-check': { const v = A.toggleHomework(d.key); el.closest('.hw')?.classList.toggle('done', v); setTimeout(render, 450); break; }
@@ -387,7 +388,7 @@ function onClick(e) {
     case 'rec-stop': recStop(); break;
     case 'open-summary': closeSheet(true); openSummary(d.id); break;
     case 'sum-retry': closeSheet(); processSummary(d.id); break;
-    case 'sum-del': if (confirm(t('Delete this summary?'))) deleteSummary(d.id); break;
+    case 'sum-del': uiConfirm(t('Delete this summary?'), { ok: t('Delete'), danger: true }).then((ok) => { if (ok) deleteSummary(d.id); }); break;
     default:
   }
 }
@@ -463,15 +464,10 @@ function boot() {
   document.addEventListener('click', (e) => { if (S.api) onClick(e); });
   document.addEventListener('input', (e) => { if (S.api) onInput(e); });
   document.addEventListener('change', (e) => { if (S.api && e.target.type === 'color' && sheetState) rerenderSheet(); });
-  document.addEventListener('change', (e) => {
-    if (e.target.id === 'setup-model' && e.target.tagName === 'SELECT') { const tx = $('#model-text'); if (tx) tx.textContent = e.target.value; return; }
-    const sel = e.target.closest?.('select[data-dd]');
-    if (!sel || !S.api) return;
-    const v = sel.value;
-    const txt = sel.closest('label')?.querySelector('.dd-val, .dd-text');
-    if (txt) txt.textContent = sel.selectedOptions[0]?.textContent || '';
-    switch (sel.dataset.dd) {
-      case 'set': setSetting(sel.dataset.key, v); break;
+  ddHandlers.pick = (act, key, v) => {
+    if (!S.api) return;
+    switch (act) {
+      case 'set': setSetting(key, v); break;
       case 'g-weight': S.gradeWeight = v; break;
       case 'hw-filter': S.hwFilter = v; S.anim = 'fade'; render(); break;
       case 'mail-folder': IS.setFolder(v); break;
@@ -479,7 +475,7 @@ function boot() {
       case 'ai-provider': setAiProvider(v); break;
       default:
     }
-  });
+  };
   document.addEventListener('contextmenu', (e) => {
     const m = e.target.closest?.('[data-msg]');
     if (m && S.api) { e.preventDefault(); IS.messageMenu(m.dataset.msg); }
@@ -504,6 +500,7 @@ function boot() {
   });
   plugin('App')?.addListener('backButton', () => {
     if (!S.api) return;
+    if (closeDialog() || closeMenu()) return;
     if (closeSheet()) return;
     if (SUBVIEWS[S.view]) { setView(parentOf(S.view), 'right'); return; }
     if (S.element) { S.element = null; render(); return; }

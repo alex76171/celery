@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.5.0';
+export const VERSION = '2.6.0';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -227,18 +227,201 @@ export const skeleton = (n = 5) => `<div class="skel-list">${Array.from({ length
 export function row(act, ic, title, sub = '', extra = '', right = '') {
   return `<button class="row" data-act="${act}" ${extra}><span class="row-ic">${icon(ic)}</span><span class="row-text"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${right}${icon('chevron-right', 'row-chev')}</button>`;
 }
-/** A dropdown (native picker) used for every "pick one" setting. */
+// ---------------------------------------------------------------- themed dropdowns, menus and dialogs
+/** Registry of the dropdowns on screen: id -> { key, options, value, act } */
+const DDS = {};
+/** Handlers for picks, set by the app: (act, key, value, label, el) => void */
+export const ddHandlers = { pick: null };
+
+function ddReg(key, options, value, act) {
+  const id = `${act}:${key}`;
+  DDS[id] = { key, options, value: String(value), act };
+  return id;
+}
+const ddLabel = (options, value) => (options.find(([v]) => String(v) === String(value)) || options[0] || ['', ''])[1];
+
+/** A compact dropdown button; opens a themed menu. */
 export function seg(key, options, value, act = 'set') {
-  const cur = options.find(([v]) => String(v) === String(value)) || options[0];
-  return `<label class="dd"><span class="dd-text">${esc(cur ? cur[1] : '')}</span>${icon('chevron-down', 'dd-ic')}<select data-dd="${act}" data-key="${key}">${options.map(([v, l]) => `<option value="${esc(v)}" ${String(value) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const id = ddReg(key, options, value, act);
+  return `<button type="button" class="dd" data-dd-open="${esc(id)}"><span class="dd-text">${esc(ddLabel(options, value))}</span>${icon('chevron-down', 'dd-ic')}</button>`;
 }
-/** A settings row with a label on the left and a dropdown value on the right. */
+/** A settings row with a label on the left and the current value on the right; opens a themed menu. */
 export function dd(label, key, options, value, { sub = '', act = 'set', ic = '' } = {}) {
-  const cur = options.find(([v]) => String(v) === String(value)) || options[0];
-  return `<label class="row dd-row">${ic ? `<span class="row-ic">${icon(ic)}</span>` : ''}<span class="row-text"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
-    <span class="dd-val">${esc(cur ? cur[1] : '')}</span>${icon('chevrons-up-down', 'dd-ic')}
-    <select data-dd="${act}" data-key="${key}" aria-label="${esc(label)}">${options.map(([v, l]) => `<option value="${esc(v)}" ${String(value) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const id = ddReg(key, options, value, act);
+  return `<button type="button" class="row dd-row" data-dd-open="${esc(id)}">${ic ? `<span class="row-ic">${icon(ic)}</span>` : ''}<span class="row-text"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+    <span class="dd-val">${esc(ddLabel(options, value))}</span>${icon('chevrons-up-down', 'dd-ic')}</button>`;
 }
+/** A form field (select) with a hidden input holding the value. */
+export function formSelect(id, options, value) {
+  ddReg(id, options, value, 'form');
+  return `<input type="hidden" id="${esc(id)}" value="${esc(value ?? options[0]?.[0] ?? '')}"><button type="button" class="dd field-dd" data-dd-open="form:${esc(id)}"><span class="dd-text">${esc(ddLabel(options, value))}</span>${icon('chevron-down', 'dd-ic')}</button>`;
+}
+/** A date field (yyyy-mm-dd in a hidden input) that opens a themed calendar. quick: [[label, Date], ...] */
+export function formDate(id, value, quick = []) {
+  formDate.quick = { ...(formDate.quick || {}), [id]: quick };
+  return `<input type="hidden" id="${esc(id)}" value="${esc(value)}"><button type="button" class="dd field-dd" data-date-open="${esc(id)}">${icon('calendar', 'dd-lead')}<span class="dd-text">${esc(fmtIso(value))}</span>${icon('chevron-down', 'dd-ic')}</button>`;
+}
+const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const dateOfIso = (v) => { const [y, m, d] = String(v).split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+function fmtIso(v) { if (!v) return ''; const d = dateOfIso(v); return `${relDay(d)} · ${fmt(d, { day: 'numeric', month: 'short', year: 'numeric' })}`; }
+
+let menuState = null;
+export function closeMenu() {
+  const root = $('#menu-root');
+  if (!menuState || !root) return false;
+  menuState = null;
+  root.classList.remove('open');
+  setTimeout(() => { if (!menuState) root.innerHTML = ''; }, 200);
+  return true;
+}
+function menuRoot() {
+  let root = $('#menu-root');
+  if (!root) { root = document.createElement('div'); root.id = 'menu-root'; document.body.appendChild(root); }
+  return root;
+}
+/** Places a popover next to its anchor, inside the screen. */
+function placePopover(pop, anchor) {
+  const r = anchor.getBoundingClientRect();
+  const vw = window.innerWidth; const vh = window.innerHeight;
+  const w = Math.min(Math.max(r.width, 220), vw - 24, 340);
+  pop.style.width = `${w}px`;
+  const rtl = document.documentElement.dir === 'rtl';
+  let left = rtl ? r.left : r.right - w;
+  left = Math.max(12, Math.min(left, vw - w - 12));
+  pop.style.left = `${left}px`;
+  const h = Math.min(pop.scrollHeight, vh * 0.6);
+  const below = r.bottom + 6;
+  const top = below + h > vh - 12 && r.top - h - 6 > 12 ? r.top - h - 6 : Math.min(below, vh - h - 12);
+  pop.style.top = `${Math.max(12, top)}px`;
+  pop.style.transformOrigin = `${r.left + r.width / 2 - left}px ${top < r.top ? '100%' : '0'}`;
+}
+/** Opens a themed menu of options under/over the anchor. */
+export function openMenu(anchor, options, value, onPick, title = '') {
+  closeMenu();
+  const root = menuRoot();
+  menuState = { onPick };
+  root.innerHTML = `<div class="menu-scrim"></div><div class="pop-menu" role="listbox">${title ? `<div class="pop-title">${esc(title)}</div>` : ''}${options.map(([v, l]) => `<button type="button" class="pop-item ${String(v) === String(value) ? 'on' : ''}" data-v="${esc(v)}"><span>${esc(l)}</span>${String(v) === String(value) ? icon('check') : ''}</button>`).join('')}</div>`;
+  const pop = $('.pop-menu', root);
+  placePopover(pop, anchor);
+  root.getBoundingClientRect();
+  root.classList.add('open');
+  $('.pop-item.on', pop)?.scrollIntoView({ block: 'center' });
+  $('.menu-scrim', root).onclick = () => closeMenu();
+  pop.onclick = (e) => {
+    const it = e.target.closest('.pop-item');
+    if (!it) return;
+    const v = it.dataset.v;
+    const label = options.find(([x]) => String(x) === v)?.[1] || v;
+    const cb = menuState?.onPick;
+    closeMenu();
+    cb?.(v, label);
+  };
+}
+/** Opens a themed calendar under/over the anchor. */
+export function openDatePicker(anchor, value, onPick, quick = []) {
+  closeMenu();
+  const root = menuRoot();
+  const sel = value ? dateOfIso(value) : startOfDay(new Date());
+  let month = new Date(sel.getFullYear(), sel.getMonth(), 1);
+  menuState = { onPick };
+  const weekdays = Array.from({ length: 7 }, (_, i) => fmt(addDays(new Date(2024, 0, 1), i), { weekday: 'narrow' }));
+  const draw = () => {
+    const startPad = (month.getDay() + 6) % 7;
+    const n = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    const cells = Array.from({ length: startPad }, () => '<i></i>').concat(Array.from({ length: n }, (_, i) => {
+      const d = new Date(month.getFullYear(), month.getMonth(), i + 1);
+      return `<button type="button" class="dp-d ${sameDay(d, sel) ? 'on' : ''} ${sameDay(d, new Date()) ? 'today' : ''}" data-v="${isoOf(d)}">${i + 1}</button>`;
+    }));
+    return `<div class="dp-head"><button type="button" class="icon-btn" data-m="-1">${icon('chevron-left')}</button><b>${esc(fmt(month, { month: 'long', year: 'numeric' }))}</b><button type="button" class="icon-btn" data-m="1">${icon('chevron-right')}</button></div>
+      ${quick.length ? `<div class="dp-quick">${quick.map(([l, d]) => `<button type="button" class="chip" data-v="${isoOf(d)}">${esc(l)}</button>`).join('')}</div>` : ''}
+      <div class="dp-grid">${weekdays.map((w) => `<span>${esc(w)}</span>`).join('')}${cells.join('')}</div>`;
+  };
+  root.innerHTML = `<div class="menu-scrim"></div><div class="pop-menu date-pop">${draw()}</div>`;
+  const pop = $('.pop-menu', root);
+  placePopover(pop, anchor);
+  root.getBoundingClientRect();
+  root.classList.add('open');
+  $('.menu-scrim', root).onclick = () => closeMenu();
+  pop.onclick = (e) => {
+    const m = e.target.closest('[data-m]');
+    if (m) { month = new Date(month.getFullYear(), month.getMonth() + Number(m.dataset.m), 1); pop.innerHTML = draw(); return; }
+    const d = e.target.closest('[data-v]');
+    if (!d) return;
+    const cb = menuState?.onPick;
+    closeMenu();
+    cb?.(d.dataset.v);
+  };
+}
+
+/** Themed confirm dialog. Resolves true/false. */
+export function uiConfirm(message, { ok = t('OK'), cancel = t('Cancel'), danger = false, title = '' } = {}) {
+  return dialog(`${title ? `<h3>${esc(title)}</h3>` : ''}<p>${esc(message)}</p>`, [[cancel, false, 'ghost'], [ok, true, danger ? 'danger' : '']]);
+}
+/** Themed text input dialog. Resolves the text or null. */
+export function uiPrompt(message, value = '', { ok = t('OK'), cancel = t('Cancel'), multiline = false, placeholder = '' } = {}) {
+  const field = multiline
+    ? `<textarea class="note" id="dlg-input" placeholder="${esc(placeholder)}">${esc(value)}</textarea>`
+    : `<input class="field" id="dlg-input" value="${esc(value)}" placeholder="${esc(placeholder)}">`;
+  return dialog(`<p>${esc(message)}</p>${field}`, [[cancel, null, 'ghost'], [ok, 'input', '']], true);
+}
+function dialog(html, buttons, focus = false) {
+  return new Promise((resolve) => {
+    let root = $('#dialog-root');
+    if (!root) { root = document.createElement('div'); root.id = 'dialog-root'; document.body.appendChild(root); }
+    root.innerHTML = `<div class="dlg-scrim"></div><div class="dlg" role="dialog">${html}<div class="dlg-btns">${buttons.map(([l, , cls], i) => `<button type="button" class="btn small ${cls}" data-i="${i}">${esc(l)}</button>`).join('')}</div></div>`;
+    root.getBoundingClientRect();
+    root.classList.add('open');
+    const input = $('#dlg-input', root);
+    if (focus && input) setTimeout(() => { input.focus(); input.select?.(); }, 120);
+    const finish = (v) => {
+      root.classList.remove('open');
+      dialog.close = null;
+      setTimeout(() => { root.innerHTML = ''; }, 200);
+      resolve(v);
+    };
+    dialog.close = () => finish(buttons[0][1]);
+    $('.dlg-scrim', root).onclick = () => finish(buttons[0][1]);
+    $('.dlg-btns', root).onclick = (e) => {
+      const b = e.target.closest('[data-i]');
+      if (!b) return;
+      const v = buttons[Number(b.dataset.i)][1];
+      finish(v === 'input' ? (input?.value ?? '') : v);
+    };
+    input?.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input.tagName === 'INPUT') { e.preventDefault(); finish(input.value); } });
+  });
+}
+/** Closes an open dialog (Android back button). */
+export function closeDialog() { if (dialog.close) { dialog.close(); return true; } return false; }
+
+// open menus from any [data-dd-open] / [data-date-open] button, in every screen including login
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-dd-open]');
+  if (b) {
+    e.stopPropagation();
+    const d = DDS[b.dataset.ddOpen];
+    if (!d) return;
+    openMenu(b, d.options, d.value, (v, label) => {
+      d.value = v;
+      const txt = b.querySelector('.dd-val, .dd-text');
+      if (txt) txt.textContent = label;
+      if (d.act === 'form') { const inp = document.getElementById(d.key); if (inp) inp.value = v; return; }
+      ddHandlers.pick?.(d.act, d.key, v, label, b);
+    });
+    return;
+  }
+  const dbtn = e.target.closest?.('[data-date-open]');
+  if (dbtn) {
+    e.stopPropagation();
+    const id = dbtn.dataset.dateOpen;
+    const inp = document.getElementById(id);
+    openDatePicker(dbtn, inp?.value, (v) => {
+      if (inp) inp.value = v;
+      const txt = dbtn.querySelector('.dd-text');
+      if (txt) txt.textContent = fmtIso(v);
+    }, (formDate.quick || {})[id] || []);
+  }
+}, true);
+
 export function toggle(key, label, sub = '', act = 'toggle') {
   const on = !!S.settings[key];
   return `<button class="row toggle-row" data-act="${act}" data-key="${key}"><span class="row-text"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="switch ${on ? 'on' : ''}"><i></i></span></button>`;

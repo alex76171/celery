@@ -4,7 +4,7 @@ Lessn is an unofficial Android app for WebUntis. It shows your timetable, homewo
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-2.5.0.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-2.6.0.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
@@ -34,6 +34,7 @@ If the search can't find your school, tap **Enter the server manually** and type
   - **Tasks**: current IServ tasks with description and attachments, "Get help from AI", and hand-in through IServ.
   - **E-Mail**, **Calendar**, **Notifications**, plus links to forums, video conferences, news, polls, plans, room booking, address book and your profile (these open in the in-app IServ browser).
   - **IServ notifications** for new messages and notifications, checked every 15 minutes.
+- **Homework and tests in the timetable**: lessons show a badge when homework is due or a test is written in them (also as icons in the week grid and list). Tap a lesson to see the homework due, homework given in it, the test with "Study with AI", and add homework for that subject (due date defaults to the next lesson).
 - **Week** as a list (default) or as a grid,, **Grades**, **Attendance** (with the optional "Are you at school?" location check), lesson reminders, Do Not Disturb during lessons, offline cache, and 9 languages (English, Deutsch, Türkçe, Français, Español, Polski, Українська, Русский, العربية, including right-to-left layout).
 
 ## Hidden customization
@@ -49,6 +50,10 @@ Inside you can change:
 - the timetable options
 - the AI model
 - a backup of your customization (copy and paste)
+
+## Look and feel
+
+All dropdowns, menus, pop-up dialogs and the date picker are drawn by the app in the current theme (no Android system dialogs). The app never vibrates: no haptic feedback, and its notifications are silent of vibration (sound only).
 
 ## Permissions (all optional, asked only when you turn a feature on)
 

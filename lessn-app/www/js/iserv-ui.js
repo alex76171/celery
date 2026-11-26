@@ -1,6 +1,6 @@
 // Custom IServ screens: hub, messenger, mail, files, calendar and notifications.
 import {
-  seg, S, t, $, esc, icon, fmt, relDay, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, toast, hash,
+  seg, uiConfirm, uiPrompt, S, t, $, esc, icon, fmt, relDay, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, toast, hash,
   PALETTE, isDark, sameDay, daysBetween, startOfDay,
 } from './core.js';
 import { native } from './native.js';
@@ -690,7 +690,7 @@ const reloadFiles = () => loadFiles(I.path);
 export async function fileRename(path) {
   const f = I.files?.find((x) => x.path === path);
   closeSheet(true);
-  const name = prompt(t('New name'), f?.name || '');
+  const name = await uiPrompt(t('New name'), f?.name || '');
   if (!name || name === f?.name || /[\\/]/.test(name)) return;
   const parent = path.replace(/\/$/, '').split('/').slice(0, -1).join('/');
   try { await client().move(path, `${parent}/${name}${f?.isDir ? '/' : ''}`); reloadFiles(); } catch (e) { toast(t(e.message), 'err'); }
@@ -698,11 +698,11 @@ export async function fileRename(path) {
 export async function fileDelete(path) {
   const f = I.files?.find((x) => x.path === path);
   closeSheet(true);
-  if (!confirm(t('Delete {name}?', { name: f?.name || path }))) return;
+  if (!await uiConfirm(t('Delete {name}?', { name: f?.name || path }), { ok: t('Delete'), danger: true })) return;
   try { await client().remove(path); reloadFiles(); toast(t('Deleted')); } catch (e) { toast(t(e.message), 'err'); }
 }
 export async function fileMkdir() {
-  const name = prompt(t('Folder name'));
+  const name = await uiPrompt(t('Folder name'));
   if (!name || /[\\/]/.test(name)) return;
   try { await client().mkdir(`${I.path.replace(/\/?$/, '/')}${name}/`); reloadFiles(); } catch (e) { toast(t(e.message), 'err'); }
 }

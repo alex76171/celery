@@ -2,7 +2,7 @@
 // and the extra "day plan" sections on Home.
 import {
   S, t, $, esc, icon, fmt, relDay, inDays, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, rerenderSheet,
-  toast, colorFor, subjLabel, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
+  toast, colorFor, subjLabel, formSelect, formDate, uiConfirm, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
 } from './core.js';
 import { chat as aiChat, studyPlan as aiPlan, LANG_NAME, aiReady } from './ai.js';
 import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
@@ -36,17 +36,26 @@ export function allHomework() {
 }
 export function hwDoneAny(h) { const m = store.doneHomework(); return h.key in m ? m[h.key] : (h.id in m && h.source === 'untis' ? m[h.id] : !!h.completed); }
 
+/** Date of the next lesson of a subject after a given date (for the due date). */
+function nextLessonOf(subject, after) {
+  const lessons = Object.values(S.weeks).filter(Array.isArray).flat()
+    .filter((l) => l.subjects[0]?.name === subject && l.date > after && l.code !== 'cancelled')
+    .sort((a, b) => a.date - b.date);
+  return lessons[0] ? fromUntisDate(lessons[0].date) : null;
+}
+
 export function openHomeworkForm(prefill = {}) {
   const subs = subjectsKnown();
-  const tomorrow = addDays(new Date(), 1);
+  const next = prefill.subject ? nextLessonOf(prefill.subject, prefill.date || toUntisDate(new Date())) : null;
+  const tomorrow = next || addDays(new Date(), 1);
   openSheet(() => `<h2 class="sheet-title">${icon('square-pen')}${esc(t('Add homework'))}</h2>
     <div class="form">
       <label class="lbl">${esc(t('Subject'))}</label>
-      <select class="field" id="h-subj"><option value="">${esc(t('No subject'))}</option>${subs.map(([k, long]) => `<option value="${esc(k)}" ${prefill.subject === k ? 'selected' : ''}>${esc(subjLabel(k) || long)}</option>`).join('')}</select>
+      ${formSelect('h-subj', [['', t('No subject')], ...subs.map(([k, long]) => [k, subjLabel(k) || long])], prefill.subject || '')}
       <label class="lbl">${esc(t('What to do'))}</label>
       <textarea class="note" id="h-text" placeholder="${esc(t('e.g. Workbook p. 42, no. 3–7'))}">${esc(prefill.text || '')}</textarea>
       <label class="lbl">${esc(t('Due'))}</label>
-      <input class="field" id="h-due" type="date" value="${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}">
+      ${formDate('h-due', `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`, [...(next ? [[t('Next lesson'), next]] : []), [t('Tomorrow'), addDays(new Date(), 1)], [t('in {n} days', { n: 2 }), addDays(new Date(), 2)], [t('Next week'), addDays(new Date(), 7)]])}
       <button class="btn" data-act="hw-save">${esc(t('Save'))}</button>
     </div>`);
 }

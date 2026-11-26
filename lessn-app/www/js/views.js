@@ -16,12 +16,42 @@ const placeText = (list) => list.map((r) => {
 const roomText = (l) => l.rooms.map((r) => (r.orig ? `<s>${esc(r.orig)}</s> <b class="chg">${esc(r.name)}</b>` : esc(r.name))).join(', ');
 export const noteKey = (l) => `${subjKey(l)}|${l.date}|${l.start}`;
 
+// ---------------------------------------------------------------- homework & exams per lesson
+const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+/** Does a homework/exam subject (short code, long name or IServ tag) belong to this lesson? */
+function sameSubject(subject, l) {
+  const n = norm(subject);
+  if (!n) return false;
+  const su = l.subjects[0];
+  const names = [subjKey(l), su?.name, su?.long, S.settings.subjectNames[subjKey(l)]].map(norm).filter(Boolean);
+  return names.some((x) => x === n || (n.length >= 3 && (x.startsWith(n) || n.startsWith(x))));
+}
+/** Homework due in / given in this lesson and exams written in it. */
+export function lessonExtras(l) {
+  const ids = l.ids || [l.id];
+  const all = allHomework();
+  const due = all.filter((h) => h.due === l.date && sameSubject(h.subject, l));
+  const given = all.filter((h) => h.date === l.date && h.due !== l.date && sameSubject(h.subject, l));
+  const exams = allExams().filter((e) => e.date === l.date && (
+    (e.start && e.end ? e.start < l.end && e.end > l.start && (!e.subject || sameSubject(e.subject, l) || !l.subjects.length) : sameSubject(e.subject, l))
+  ));
+  if (l.type === 'ex' && !exams.length) exams.push({ id: `lesson-${ids[0]}`, subject: subjKey(l), date: l.date, start: l.start, end: l.end, name: l.info || l.text || t('Exam'), fromLesson: true });
+  return { due, open: due.filter((h) => !hwDoneAny(h)), given, exams };
+}
+function extraBadges(x) {
+  const out = [];
+  if (x.exams.length) out.push({ cls: 'exm', icon: 'graduation-cap', text: x.exams.map((e) => e.name || e.type || t('Exam')).join(', ').slice(0, 40) });
+  if (x.due.length) out.push({ cls: x.open.length ? 'hwb' : 'ok', icon: x.open.length ? 'clipboard-list' : 'circle-check', text: x.open.length ? t('Homework due') : t('Homework done') });
+  return out;
+}
+
 // ---------------------------------------------------------------- lesson rows
 function lessonCard(l, i) {
   const s = S.settings;
   const color = colorFor(subjKey(l));
   const p = periodLabel(l);
-  const ch = changes(l).filter((b) => !(l.code === 'cancelled' && b.cls === 'bad'));
+  const extras = lessonExtras(l);
+  const ch = [...extraBadges(extras), ...changes(l).filter((b) => !(l.code === 'cancelled' && b.cls === 'bad') && !(b.cls === 'exm' && extras.exams.length))];
   if (l.units > 1) ch.unshift({ cls: 'soft', icon: 'layers', text: t('Double period') });
   const meta = [];
   if (s.showRoom && l.rooms.length) meta.push(`<span>${icon('map-pin')}${roomText(l)}</span>`);
@@ -31,13 +61,14 @@ function lessonCard(l, i) {
   const hasSummary = store.summaries().some((x) => x.lessonKey === noteKey(l));
   const info = [l.subst, l.info].filter(Boolean).join(' · ');
   const cancelled = l.code === 'cancelled';
-  return `<button class="lesson ${cancelled ? 'cancelled' : ''} ${isChanged(l) ? 'changed' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}" style="--c:${color};--i:${Math.min(i, 14)}">
+  return `<button class="lesson ${cancelled ? 'cancelled' : ''} ${extras.exams.length ? 'has-exam' : ''} ${isChanged(l) ? 'changed' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}" style="--c:${color};--i:${Math.min(i, 14)}">
     <div class="l-time"><b>${fmtTime(l.start)}</b><span>${fmtTime(l.end)}</span>${p ? `<em>${esc(p)}</em>` : ''}</div>
     <div class="l-bar"></div>
     <div class="l-body">
       <div class="l-title"><span>${esc(subjName(l))}</span>${note ? icon('sticky-note', 'mini') : ''}${hasSummary ? icon('sparkles', 'mini') : ''}</div>
       ${meta.length ? `<div class="l-meta">${meta.join('')}</div>` : ''}
       ${ch.length ? `<div class="badges">${ch.map(badge).join('')}</div>` : ''}
+      ${extras.open.length ? `<div class="l-hw">${icon('clipboard-list')}<span>${esc(extras.open.map((h) => h.text.split('\n')[0]).join(' · ').slice(0, 120))}</span></div>` : ''}
       ${l.breakMin ? `<div class="l-sub">${icon('coffee')}${esc(t('incl. {m} min break', { m: l.breakMin }))}</div>` : ''}
       ${info ? `<div class="l-info">${icon('info')}<span>${esc(info)}</span></div>` : ''}
     </div>
@@ -294,14 +325,16 @@ export function viewWeek() {
       const h = Math.max(18, bottom - top);
       const color = colorFor(subjKey(l));
       const name = s.subjectShortInGrid ? subjName(l, true) : subjName(l);
+      const ex = lessonExtras(l);
+      const marks = `${ex.exams.length ? `<i class="mk mk-ex">${icon('graduation-cap')}</i>` : ''}${ex.open.length ? `<i class="mk mk-hw">${icon('clipboard-list')}</i>` : ''}`;
       const lines = [];
       if (l.code === 'cancelled' && h > 34) lines.push(`<span class="x">${esc(t('Cancelled'))}</span>`);
       else if (l.replaces?.length && h > 34) lines.push(`<span class="chg-l">${esc(t('Substitution'))}</span>`);
       else if (s.showRoom && l.rooms.length && h > 34) lines.push(`<span>${roomText(l)}</span>`);
       if (s.showTeacher && l.teachers.length && h > 52 && l.code !== 'cancelled') lines.push(`<span>${placeText(l.teachers)}</span>`);
-      return `<button class="blk ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) ? 'changed' : ''} ${l.type === 'ex' ? 'is-exam' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}"
+      return `<button class="blk ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) ? 'changed' : ''} ${l.type === 'ex' || ex.exams.length ? 'is-exam' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}"
         style="--c:${color};--i:${Math.min(bi++, 30)};top:${top}px;height:${h}px;left:calc(${(l._col / l._n) * 100}% + 2px);width:calc(${100 / l._n}% - 4px)">
-        <b>${l.code === 'cancelled' ? icon('ban', 'mini') : ''}${esc(name)}</b>${lines.join('')}</button>`;
+        <b>${l.code === 'cancelled' ? icon('ban', 'mini') : ''}${esc(name)}</b>${lines.join('')}${marks ? `<span class="mks">${marks}</span>` : ''}</button>`;
     }).join('');
     const nowLine = s.showNowLine && sameDay(d, today) && nowMin() >= min && nowMin() <= max ? `<div class="now-line" style="top:${(nowMin() - min) * ppm}px"></div>` : '';
     const holTag = hol && !list.length ? `<div class="wk-hol">${icon('sun')}<span>${esc(hol.name)}</span></div>` : '';
@@ -334,7 +367,7 @@ function weekList(days, data) {
       </button>
       ${list.length ? `<div class="wl-lessons">${list.map((l) => `<button class="wl-l ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) && l.code !== 'cancelled' ? 'changed' : ''}" data-act="lesson" data-id="${l.id}" style="--c:${colorFor(subjKey(l))}">
         <span class="wl-t">${fmtTime(l.start)}</span><i class="wl-bar"></i>
-        <span class="wl-n">${esc(subjName(l))}${l.units > 1 ? ` <em>×${l.units}</em>` : ''}</span>
+        <span class="wl-n">${esc(subjName(l))}${l.units > 1 ? ` <em>×${l.units}</em>` : ''}${(() => { const ex = lessonExtras(l); return `${ex.exams.length ? `<b class="wl-mk ex">${icon('graduation-cap')}${esc(t('Exam'))}</b>` : ''}${ex.open.length ? `<b class="wl-mk hw">${icon('clipboard-list')}</b>` : ''}`; })()}</span>
         <span class="wl-r">${l.code === 'cancelled' ? `<b class="bad">${esc(t('Cancelled'))}</b>` : l.replaces?.length ? `<b class="chg">${esc(t('Substitution'))}</b>` : roomText(l)}</span>
       </button>`).join('')}</div>` : ''}
     </div>`;
@@ -424,7 +457,8 @@ export function openLesson(id) {
   const color = colorFor(subjKey(l));
   const d = fromUntisDate(l.date);
   const ch = changes(l);
-  const hw = (S.homework || []).filter((h) => h.due === l.date && h.subject === subjKey(l));
+  const ex = lessonExtras(l);
+  const hwRow = (h) => `<button class="d-row tap hw-line ${hwDoneAny(h) ? 'done' : ''}" data-act="hw-open" data-key="${esc(h.key)}">${icon(hwDoneAny(h) ? 'circle-check' : 'clipboard-list')}<div><span>${esc(h.text)}</span><small>${esc(h.source === 'iserv' ? t('IServ task') : h.source === 'mine' ? t('Added by you') : 'WebUntis')}${h.source !== 'mine' && h.date ? ` · ${esc(t('Given {d}', { d: fmt(fromUntisDate(h.date), { day: 'numeric', month: 'short' }) }))}` : ''}</small></div></button>`;
   const sums = store.summaries().filter((x) => x.lessonKey === noteKey(l));
   const detail = (ic, label, value) => (value ? `<div class="d-row">${icon(ic)}<div><small>${esc(label)}</small><span>${value}</span></div></div>` : '');
   openSheet(() => `
@@ -445,7 +479,13 @@ export function openLesson(id) {
       ${detail('info', t('Info'), esc(l.info))}
       ${detail('book-open', t('Lesson text'), esc(l.text))}
     </div>
-    ${hw.length ? `<div class="section-title">${esc(t('Homework due'))}</div><div class="card">${hw.map((h) => `<div class="d-row">${icon('clipboard-list')}<div><span>${esc(h.text)}</span></div></div>`).join('')}</div>` : ''}
+    ${ex.exams.length ? `<div class="section-title">${icon('graduation-cap')}${esc(t('Exam in this lesson'))}</div>${ex.exams.map((e) => `<div class="exam-in">
+        <div><b>${esc(e.name || e.type || t('Exam'))}</b>${e.text ? `<span>${esc(e.text)}</span>` : ''}${e.start ? `<small>${fmtTime(e.start)} – ${fmtTime(e.end)}${(e.rooms || []).length ? ` · ${esc(e.rooms.map((r) => (typeof r === 'string' ? r : r.name)).join(', '))}` : ''}</small>` : ''}</div>
+        ${e.fromLesson ? '' : `<button class="btn small ghost" data-act="ai-exam" data-id="${esc(examId(e))}">${icon('sparkles')}${esc(t('Study with AI'))}</button>`}</div>`).join('')}` : ''}
+    <div class="section-title">${icon('clipboard-list')}${esc(t('Homework due'))}</div>
+    <div class="card">${ex.due.length ? ex.due.map(hwRow).join('') : `<div class="d-row muted">${icon('circle-check')}<div><span>${esc(t('Nothing due in this lesson'))}</span></div></div>`}
+      <button class="row" data-act="hw-add-for" data-subj="${esc(subjKey(l))}" data-date="${l.date}"><span class="row-ic">${icon('plus')}</span><span class="row-text"><b>${esc(t('Add homework'))}</b><small>${esc(t('For this subject'))}</small></span></button></div>
+    ${ex.given.length ? `<div class="section-title">${icon('square-pen')}${esc(t('Given in this lesson'))}</div><div class="card">${ex.given.map((h) => hwRow(h).replace('</small>', ` · ${esc(t('Due'))} ${esc(relDay(fromUntisDate(h.due)))}</small>`)).join('')}</div>` : ''}
     ${sums.length ? `<div class="section-title">${esc(t('AI summary'))}</div><div class="card">${sums.map((x) => `<button class="row" data-act="open-summary" data-id="${x.id}"><span class="row-ic">${icon('sparkles')}</span><span class="row-text"><b>${esc(x.result?.title || t('Lesson summary'))}</b><small>${esc((x.result?.topics || []).slice(0, 3).join(' · '))}</small></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : ''}
     <div class="section-title">${esc(t('My note'))}</div>
     <textarea class="note" id="note" placeholder="${esc(t('Add a note for this lesson'))}">${esc(store.notes()[noteKey(l)] || '')}</textarea>

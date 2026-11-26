@@ -1,6 +1,6 @@
 // Menu hub, Grades, Attendance, IServ, Lesson recorder (beta), Settings and the hidden Customize panel.
 import {
-  dd, S, t, esc, icon, fmt, fmtTime, relDay, inDays, sameDay, addDays, startOfDay, daysBetween, toUntisDate, fromUntisDate, pad,
+  dd, formSelect, formDate, uiConfirm, S, t, esc, icon, fmt, fmtTime, relDay, inDays, sameDay, addDays, startOfDay, daysBetween, toUntisDate, fromUntisDate, pad,
   subjLabel, colorFor, PALETTE, hash, store, emptyState, skeleton, badge, stagger, row, seg, toggle, openSheet, closeSheet,
   rerenderSheet, toast, THEMES, FONTS, VERSION, currentTheme, isDark, nowMin, subjKey, subjName, durText,
 } from './core.js';
@@ -101,7 +101,7 @@ export function openGradeForm() {
   openSheet(() => `<h2 class="sheet-title">${icon('award')}${esc(t('Add grade'))}</h2>
     <div class="form">
       <label class="lbl">${esc(t('Subject'))}</label>
-      <select class="field" id="g-subj">${subs.map(([k, long]) => `<option value="${esc(k)}">${esc(subjLabel(k) || long)}</option>`).join('')}<option value="">${esc(t('Other'))}</option></select>
+      ${formSelect('g-subj', [...subs.map(([k, long]) => [k, subjLabel(k) || long]), ['', t('Other')]], subs[0]?.[0] ?? '')}
       <label class="lbl">${esc(t('Grade'))}</label>
       <input class="field" id="g-val" inputmode="decimal" placeholder="${esc(t('e.g. 2 or 2- or 12'))}">
       <label class="lbl">${esc(t('Type'))}</label>
@@ -109,7 +109,7 @@ export function openGradeForm() {
       <label class="lbl">${esc(t('Weight'))}</label>
       ${seg('g-weight', [['0.5', '×0.5'], ['1', '×1'], ['2', '×2']], S.gradeWeight || '1', 'g-weight')}
       <label class="lbl">${esc(t('Date'))}</label>
-      <input class="field" id="g-date" type="date" value="${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}">
+      ${formDate('g-date', `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`, [[t('Today'), today], [t('Yesterday'), addDays(today, -1)]])}
       <button class="btn" data-act="grade-save">${esc(t('Save'))}</button>
     </div>`);
 }

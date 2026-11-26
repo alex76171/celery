@@ -529,7 +529,15 @@ export const DICT = {
   "Testing…": "Wird getestet…",
   "Fill in the server address and model.": "Gib Serveradresse und Modell ein.",
   "AI connected: {name}": "KI verbunden: {name}",
-  "Instead of": "Statt"
+  "Instead of": "Statt",
+  "OK": "OK",
+  "Cancel": "Abbrechen",
+  "Exam in this lesson": "Prüfung in dieser Stunde",
+  "Nothing due in this lesson": "Für diese Stunde ist nichts fällig",
+  "For this subject": "Für dieses Fach",
+  "Given in this lesson": "In dieser Stunde aufgegeben",
+  "Homework done": "Hausaufgabe erledigt",
+  "Next lesson": "Nächste Stunde"
  },
  "tr": {
   "Timetable": "Ders programı",
@@ -1058,7 +1066,15 @@ export const DICT = {
   "Testing…": "Test ediliyor…",
   "Fill in the server address and model.": "Sunucu adresini ve modeli gir.",
   "AI connected: {name}": "Yapay zekâ bağlandı: {name}",
-  "Instead of": "Yerine"
+  "Instead of": "Yerine",
+  "OK": "Tamam",
+  "Cancel": "İptal",
+  "Exam in this lesson": "Bu derste sınav",
+  "Nothing due in this lesson": "Bu ders için teslim yok",
+  "For this subject": "Bu ders için",
+  "Given in this lesson": "Bu derste verildi",
+  "Homework done": "Ödev tamam",
+  "Next lesson": "Sonraki ders"
  },
  "fr": {
   "Timetable": "Emploi du temps",
@@ -1587,7 +1603,15 @@ export const DICT = {
   "Testing…": "Test en cours…",
   "Fill in the server address and model.": "Indique l'adresse du serveur et le modèle.",
   "AI connected: {name}": "IA connectée : {name}",
-  "Instead of": "À la place de"
+  "Instead of": "À la place de",
+  "OK": "OK",
+  "Cancel": "Annuler",
+  "Exam in this lesson": "Examen pendant ce cours",
+  "Nothing due in this lesson": "Rien à rendre pour ce cours",
+  "For this subject": "Pour cette matière",
+  "Given in this lesson": "Donné pendant ce cours",
+  "Homework done": "Devoir fait",
+  "Next lesson": "Prochain cours"
  },
  "es": {
   "Timetable": "Horario",
@@ -2116,7 +2140,15 @@ export const DICT = {
   "Testing…": "Probando…",
   "Fill in the server address and model.": "Rellena la dirección del servidor y el modelo.",
   "AI connected: {name}": "IA conectada: {name}",
-  "Instead of": "En lugar de"
+  "Instead of": "En lugar de",
+  "OK": "Aceptar",
+  "Cancel": "Cancelar",
+  "Exam in this lesson": "Examen en esta clase",
+  "Nothing due in this lesson": "Nada que entregar en esta clase",
+  "For this subject": "Para esta asignatura",
+  "Given in this lesson": "Puesto en esta clase",
+  "Homework done": "Deberes hechos",
+  "Next lesson": "Próxima clase"
  },
  "pl": {
   "Timetable": "Plan lekcji",
@@ -2645,7 +2677,15 @@ export const DICT = {
   "Testing…": "Testowanie…",
   "Fill in the server address and model.": "Podaj adres serwera i model.",
   "AI connected: {name}": "Połączono AI: {name}",
-  "Instead of": "Zamiast"
+  "Instead of": "Zamiast",
+  "OK": "OK",
+  "Cancel": "Anuluj",
+  "Exam in this lesson": "Sprawdzian na tej lekcji",
+  "Nothing due in this lesson": "Nic do oddania na tę lekcję",
+  "For this subject": "Dla tego przedmiotu",
+  "Given in this lesson": "Zadane na tej lekcji",
+  "Homework done": "Zadanie zrobione",
+  "Next lesson": "Następna lekcja"
  },
  "ru": {
   "Timetable": "Расписание",
@@ -3174,7 +3214,15 @@ export const DICT = {
   "Testing…": "Проверка…",
   "Fill in the server address and model.": "Укажи адрес сервера и модель.",
   "AI connected: {name}": "ИИ подключён: {name}",
-  "Instead of": "Вместо"
+  "Instead of": "Вместо",
+  "OK": "OK",
+  "Cancel": "Отмена",
+  "Exam in this lesson": "Контрольная на этом уроке",
+  "Nothing due in this lesson": "К этому уроку ничего не задано",
+  "For this subject": "Для этого предмета",
+  "Given in this lesson": "Задано на этом уроке",
+  "Homework done": "Домашка сделана",
+  "Next lesson": "Следующий урок"
  },
  "uk": {
   "Timetable": "Розклад",
@@ -3703,7 +3751,15 @@ export const DICT = {
   "Testing…": "Перевірка…",
   "Fill in the server address and model.": "Вкажи адресу сервера та модель.",
   "AI connected: {name}": "ШІ під’єднано: {name}",
-  "Instead of": "Замість"
+  "Instead of": "Замість",
+  "OK": "OK",
+  "Cancel": "Скасувати",
+  "Exam in this lesson": "Контрольна на цьому уроці",
+  "Nothing due in this lesson": "На цей урок нічого не задано",
+  "For this subject": "Для цього предмета",
+  "Given in this lesson": "Задано на цьому уроці",
+  "Homework done": "Домашку зроблено",
+  "Next lesson": "Наступний урок"
  },
  "ar": {
   "Timetable": "الجدول الدراسي",
@@ -4232,6 +4288,14 @@ export const DICT = {
   "Testing…": "جارٍ الاختبار…",
   "Fill in the server address and model.": "أدخل عنوان الخادم والنموذج.",
   "AI connected: {name}": "تم ربط الذكاء الاصطناعي: {name}",
-  "Instead of": "بدلًا من"
+  "Instead of": "بدلًا من",
+  "OK": "موافق",
+  "Cancel": "إلغاء",
+  "Exam in this lesson": "اختبار في هذه الحصة",
+  "Nothing due in this lesson": "لا شيء مستحق في هذه الحصة",
+  "For this subject": "لهذه المادة",
+  "Given in this lesson": "أُعطي في هذه الحصة",
+  "Homework done": "تم إنجاز الواجب",
+  "Next lesson": "الحصة القادمة"
  }
 };

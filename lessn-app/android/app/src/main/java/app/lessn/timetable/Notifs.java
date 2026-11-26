@@ -11,20 +11,29 @@ import androidx.core.app.NotificationManagerCompat;
 
 /** Notification channels and helpers. */
 public final class Notifs {
-    public static final String CH_LESSONS = "lessons";
-    public static final String CH_PRESENCE = "presence";
-    public static final String CH_RECORDING = "recording";
-    public static final String CH_ISERV = "iserv";
+    public static final String CH_LESSONS = "lessons_quiet";
+    public static final String CH_PRESENCE = "presence_quiet";
+    public static final String CH_RECORDING = "recording_quiet";
+    public static final String CH_ISERV = "iserv_quiet";
 
     private Notifs() {}
 
     public static void ensureChannels(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel(CH_LESSONS, "Lessons", NotificationManager.IMPORTANCE_DEFAULT));
-        nm.createNotificationChannel(new NotificationChannel(CH_PRESENCE, "Attendance check", NotificationManager.IMPORTANCE_HIGH));
-        nm.createNotificationChannel(new NotificationChannel(CH_RECORDING, "Lesson recording", NotificationManager.IMPORTANCE_LOW));
-        nm.createNotificationChannel(new NotificationChannel(CH_ISERV, "IServ", NotificationManager.IMPORTANCE_DEFAULT));
+        // Channels can't be changed after creation, so the silent (no vibration) versions get new ids
+        for (String old : new String[] { "lessons", "presence", "recording", "iserv" }) nm.deleteNotificationChannel(old);
+        nm.createNotificationChannel(quiet(CH_LESSONS, "Lessons", NotificationManager.IMPORTANCE_DEFAULT));
+        nm.createNotificationChannel(quiet(CH_PRESENCE, "Attendance check", NotificationManager.IMPORTANCE_HIGH));
+        nm.createNotificationChannel(quiet(CH_RECORDING, "Lesson recording", NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(quiet(CH_ISERV, "IServ", NotificationManager.IMPORTANCE_DEFAULT));
+    }
+
+    private static NotificationChannel quiet(String id, String name, int importance) {
+        NotificationChannel c = new NotificationChannel(id, name, importance);
+        c.enableVibration(false);
+        c.setVibrationPattern(new long[] { 0 });
+        return c;
     }
 
     public static PendingIntent openApp(Context ctx) {
@@ -42,6 +51,8 @@ public final class Notifs {
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openApp(ctx))
             .setAutoCancel(true)
+            .setVibrate(new long[] { 0 })
+            .setDefaults(NotificationCompat.DEFAULT_SOUND | NotificationCompat.DEFAULT_LIGHTS)
             .setPriority(CH_PRESENCE.equals(channel) ? NotificationCompat.PRIORITY_HIGH : NotificationCompat.PRIORITY_DEFAULT);
         for (NotificationCompat.Action a : actions) b.addAction(a);
         try {

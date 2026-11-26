@@ -77,6 +77,7 @@ public class RecorderService extends Service {
             .setContentTitle(title)
             .setContentText("Lessn")
             .setOngoing(true)
+            .setSilent(true)
             .setUsesChronometer(true)
             .setWhen(System.currentTimeMillis())
             .setContentIntent(Notifs.openApp(this))

@@ -1,5 +1,5 @@
 // Two-step sign-in: 1) find your school, 2) enter your login.
-import { S, t, esc, icon, $, store, applyTheme, syncBars } from './core.js';
+import { S, t, esc, icon, $, store, applyTheme, syncBars, openMenu } from './core.js';
 import { LANGS } from './i18n.js';
 import { Untis, searchSchools, parseServerInput } from './api.js';
 import { startApp } from './app.js';
@@ -11,7 +11,7 @@ const L = { step: 0, near: null, nearCity: '', nearState: 'idle', dir: 'fwd', sc
 const blobs = '<div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div>';
 
 function langPicker() {
-  return `<div class="lang-pick">${icon('globe')}<select id="lang-sel">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${S.settings.lang === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>`;
+  return `<button type="button" class="lang-pick" data-login="lang-menu">${icon('globe')}<span>${esc(LANGS[S.settings.lang] || 'English')}</span>${icon('chevron-down', 'dd-ic')}</button>`;
 }
 
 const HELLOS = [['en', 'Hello'], ['de', 'Hallo'], ['tr', 'Merhaba'], ['fr', 'Bonjour'], ['es', 'Hola'], ['pl', 'Cześć'], ['uk', 'Привіт'], ['ru', 'Привет'], ['ar', 'مرحبا']];
@@ -19,8 +19,7 @@ function step0() {
   return `<div class="hello">
     <div class="hello-words">${HELLOS.map(([k, w], i) => `<span class="hello-w" style="--n:${i}" lang="${k}">${w}</span>`).join('')}</div>
     <div class="hello-bottom">
-      <label class="hello-lang-dd">${icon('globe')}<span>${esc(LANGS[S.settings.lang] || 'English')}</span>${icon('chevron-down')}
-        <select id="lang-sel" aria-label="Language">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${S.settings.lang === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      <button type="button" class="hello-lang-dd" data-login="lang-menu">${icon('globe')}<span>${esc(LANGS[S.settings.lang] || 'English')}</span>${icon('chevron-down')}</button>
       <button class="hello-go" data-login="start" aria-label="${esc(t('Continue'))}">${icon('chevron-right')}</button>
     </div>
   </div>`;
@@ -115,13 +114,7 @@ const go = (step, dir) => { L.step = step; L.dir = dir; renderLogin(); };
 
 let searchTimer;
 export function bindLogin() {
-  document.addEventListener('change', (e) => {
-    if (e.target.id !== 'lang-sel') return;
-    S.settings.lang = e.target.value;
-    store.saveSettings(S.settings);
-    applyTheme();
-    const k = keepCreds(); L.dir = 'none'; renderLogin(); restoreCreds(k);
-  });
+
   document.addEventListener('input', (e) => {
     if (e.target.id !== 'school-q') return;
     L.query = e.target.value.trim();
@@ -146,6 +139,13 @@ export function bindLogin() {
     const b = e.target.closest('[data-login]');
     if (!b) return;
     const a = b.dataset.login;
+    if (a === 'lang-menu') {
+      openMenu(b, Object.entries(LANGS), S.settings.lang, (v) => {
+        S.settings.lang = v; store.saveSettings(S.settings); applyTheme();
+        const k = keepCreds(); L.dir = 'none'; renderLogin(); restoreCreds(k);
+      });
+      return;
+    }
     if (a === 'lang') { S.settings.lang = b.dataset.l; store.saveSettings(S.settings); applyTheme(); go(0, 'none'); return; }
     if (a === 'start') { go(1, 'fwd'); if (hasNative() && L.nearState === 'idle') findNearby(); return; }
     if (a === 'near') { findNearby(); return; }

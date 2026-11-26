@@ -1,5 +1,5 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
-import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd } from './core.js';
+import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect } from './core.js';
 import { PROVIDERS, listModels, complete } from './ai.js';
 import { native, hasNative } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
@@ -70,7 +70,7 @@ function aiForm() {
     <label class="input">${icon('key-round')}<input id="setup-key" type="password" placeholder="${esc(p.placeholder)}" value="${esc(store.aiKey(AIS.provider))}" autocomplete="off"></label>
     <label class="lbl">${esc(t('Model'))}</label>
     <div class="model-row">
-      ${AIS.models ? `<label class="dd"><span class="dd-text" id="model-text">${esc(cur && models.includes(cur) ? cur : models[0] || '')}</span>${icon('chevron-down', 'dd-ic')}<select id="setup-model">${models.map((m) => `<option ${m === cur ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>`
+      ${AIS.models ? formSelect('setup-model', models.map((m) => [m, m]), cur && models.includes(cur) ? cur : models[0] || '')
         : `<label class="input">${icon('cpu')}<input id="setup-model" value="${esc(cur)}" placeholder="${esc(p.model || 'model-name')}" autocapitalize="off" autocorrect="off"></label>`}
       <button class="icon-btn" data-act="ai-load-models" aria-label="${esc(t('Load models'))}">${icon(AIS.loading ? 'refresh-cw' : 'list', AIS.loading ? 'spin-ic' : '')}</button>
     </div>
@@ -85,7 +85,7 @@ function keepAi(fn) {
   fn();
   if (v.k !== undefined && $('#setup-key')) $('#setup-key').value = v.k;
   if (v.b !== undefined && $('#setup-base')) $('#setup-base').value = v.b;
-  if (v.m && $('#setup-model')?.tagName === 'INPUT') $('#setup-model').value = v.m;
+  if (v.m && $('#setup-model')?.type !== 'hidden') $('#setup-model').value = v.m;
 }
 
 export function openAISetup(next) {

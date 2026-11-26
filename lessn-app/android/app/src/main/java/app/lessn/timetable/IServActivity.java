@@ -50,6 +50,7 @@ public class IServActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(bg);
         web = new WebView(this);
+        web.setHapticFeedbackEnabled(false);
         web.setBackgroundColor(bg);
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);

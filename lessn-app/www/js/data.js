@@ -236,7 +236,7 @@ export function changes(l) {
     out.push({ cls: 'warn', icon: 'arrow-left-right', text: `${t('Substitution')} · ${t('instead of {s}', { s: replacedNames(l) })}` });
   }
   if (l.code === 'cancelled') out.push({ cls: 'bad', icon: 'ban', text: t('Cancelled') });
-  if (l.type === 'ex') out.push({ cls: 'exam', icon: 'graduation-cap', text: t('Exam') });
+  if (l.type === 'ex') out.push({ cls: 'exm', icon: 'graduation-cap', text: t('Exam') });
   if (l.teachers.some((x) => x.orig) && !l.replaces?.length) out.push({ cls: 'warn', icon: 'arrow-left-right', text: t('Substitute') });
   if (l.rooms.some((r) => r.orig)) out.push({ cls: 'warn', icon: 'door-open', text: t('Room change') });
   if (l.code === 'irregular' && out.length === 0 && !l.replaces?.length) out.push({ cls: 'warn', icon: 'triangle-alert', text: t('Changed') });
