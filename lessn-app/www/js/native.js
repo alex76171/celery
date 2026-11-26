@@ -38,5 +38,13 @@ export const native = {
   saveFile: (path, name) => call('saveFile', { path, name }),
   pdfPage: (path, page, width) => call('pdfPage', { path, page, width }),
   writeCache: (name, base64) => call('writeCache', { name, base64 }),
+  discoverPcs: (opts) => call('discoverPcs', opts),
+  pickFolder: () => call('pickFolder'),
+  treeList: (opts) => call('treeList', opts),
+  treeRead: (opts) => call('treeRead', opts),
+  treeWrite: (opts) => call('treeWrite', opts),
+  treeDelete: (opts) => call('treeDelete', opts),
+  treeMkdir: (opts) => call('treeMkdir', opts),
+  notify: (opts) => call('notify', opts),
   openIServ: (opts) => (hasNative() ? call('openIServ', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
 };

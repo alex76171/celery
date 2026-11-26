@@ -32,7 +32,7 @@ function nearby() {
     return `<div class="section-title near-title">${icon('map-pin')}${esc(t('Schools near {city}', { city: L.nearCity }))}</div>
       <div class="results">${L.near.slice(0, 12).map((s, i) => `<button type="button" class="result" data-login="pick-near" data-i="${i}" style="--i:${Math.min(i, 10)}"><span class="res-ic">${icon('school')}</span><div><b>${esc(s.name)}</b><small>${esc(s.address)}</small></div>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>`;
   }
-  if (L.nearState === 'idle' && hasNative()) return `<button type="button" class="near-btn" data-login="near">${icon('locate-fixed')}<span><b>${esc(t('Find schools near me'))}</b><small>${esc(t('Uses your location once'))}</small></span></button>`;
+  if (L.nearState === 'idle' && hasNative() && !window.Capacitor?.isDesktop) return `<button type="button" class="near-btn" data-login="near">${icon('locate-fixed')}<span><b>${esc(t('Find schools near me'))}</b><small>${esc(t('Uses your location once'))}</small></span></button>`;
   if (L.nearState === 'many') return `<p class="hint center">${esc(t('Many schools in {city}. Type your school\'s name.', { city: L.nearCity }))}</p>`;
   return '';
 }

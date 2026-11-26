@@ -31,6 +31,8 @@ export const DEFAULTS = {
   aiModels: {},
   aiBaseUrl: '',
   aiFallback: true,
+  pcSync: true,
+  pcSyncSecrets: true,
   ai_chat: '',
   ai_plan: '',
   ai_summary: '',

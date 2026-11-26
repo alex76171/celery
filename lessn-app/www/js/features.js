@@ -26,6 +26,7 @@ export function viewMore() {
     ['holidays', 'sun', t('Holidays'), '', 'holidays'],
     ['directions', 'navigation', t('Directions to school'), '', 'directions'],
     ['notif-settings', 'bell', t('Notifications'), '', 'notif-settings'],
+    ['pc', 'monitor', window.Capacitor?.isDesktop ? t('Phone') : t('PC'), '', 'nav'],
   ];
   return `<div class="pad">
     <div class="account"${stagger(0)}><div class="avatar">${icon('user')}</div><div><b>${esc(a.username)}</b><small>${esc(a.schoolName || a.school)}</small></div></div>
@@ -308,7 +309,7 @@ export async function recStop() {
   try { res = await native.stopRecording(); } catch (e) { toast(e.message, 'err'); return; }
   setRec(null);
   if (!res?.path) { toast(t('Recording failed'), 'err'); render(); return; }
-  const item = { id: 's' + Date.now(), t: Date.now(), subject: rec?.subject || '', lessonKey: rec?.lessonKey || '', date: rec?.date || toUntisDate(new Date()), durationMs: res.duration || 0, path: res.path, status: 'pending' };
+  const item = { id: 's' + Date.now(), t: Date.now(), subject: rec?.subject || '', lessonKey: rec?.lessonKey || '', date: rec?.date || toUntisDate(new Date()), durationMs: res.duration || 0, path: res.path, mime: res.mime || 'audio/mp4', status: 'pending' };
   store.setSummaries([...store.summaries(), item]);
   processSummary(item.id);
 }
@@ -325,7 +326,7 @@ export async function processSummary(id) {
     const lang = S.settings.aiLang === 'auto' ? S.settings.lang : S.settings.aiLang;
     const d = fromUntisDate(item.date);
     const result = await summarizeAudio({
-      base64: data, mime: 'audio/mp4', lang,
+      base64: data, mime: item.mime || 'audio/mp4', lang,
       context: { subject: subjLabel(item.subject), date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${fmt(d, { weekday: 'long' })})` },
     });
     update({ status: 'done', result, path: S.settings.keepAudio ? item.path : null });

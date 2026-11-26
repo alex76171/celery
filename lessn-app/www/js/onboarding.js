@@ -1,6 +1,6 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
 import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect, toggle, stagger, openMenu } from './core.js';
-import { PROVIDERS, listModels, catalog, priceOf, complete, linkedAIs, aiFor } from './ai.js';
+import { PROVIDERS, listModels, catalog, priceOf, complete, linkedAIs, aiFor, aiConfig } from './ai.js';
 import { native, hasNative } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
 import { render } from './app.js';
@@ -63,13 +63,13 @@ function aiForm() {
     <h2>${esc(t('Meet your AI helper'))}</h2>
     <p>${esc(t('It explains homework, answers questions about photos, summarizes recorded lessons and makes study plans for your exams.'))}</p>
     <div class="card">
-      ${dd(t('AI provider'), 'ai-provider', Object.entries(PROVIDERS).map(([id, x]) => [id, x.name]), AIS.provider, { act: 'ai-provider', ic: 'sparkles' })}
+      ${dd(t('AI provider'), 'ai-provider', Object.entries(PROVIDERS).filter(([id]) => id !== 'pc' || AIS.provider === 'pc').map(([id, x]) => [id, x.name]), AIS.provider, { act: 'ai-provider', ic: 'sparkles' })}
     </div>
     ${p.keyUrl ? `<button class="btn small ghost" data-act="ai-getkey">${icon('external-link')}${esc(t('Get a key'))} · ${esc(new URL(p.keyUrl).hostname)}</button>` : ''}
     ${AIS.provider === 'custom' ? `<label class="lbl">${esc(t('Server address'))}</label>
       <label class="input">${icon('server')}<input id="setup-base" placeholder="https://api.example.com/v1" value="${esc(S.settings.aiBaseUrl || '')}" autocapitalize="off" autocorrect="off"></label>` : ''}
-    <label class="lbl">${esc(t('API key'))}</label>
-    <label class="input">${icon('key-round')}<input id="setup-key" type="password" placeholder="${esc(p.placeholder)}" value="${esc(store.aiKey(AIS.provider))}" autocomplete="off"></label>
+    ${AIS.provider === 'pc' ? `<input id="setup-key" type="hidden" value="${esc(store.aiKey('pc'))}"><p class="hint">${icon('monitor', 'mini')} ${esc(t('Runs on your paired PC. Free and private.'))}</p>` : `<label class="lbl">${esc(t('API key'))}</label>
+    <label class="input">${icon('key-round')}<input id="setup-key" type="password" placeholder="${esc(p.placeholder)}" value="${esc(store.aiKey(AIS.provider))}" autocomplete="off"></label>`}
     <label class="lbl">${esc(t('Model'))}</label>
     <div class="model-row">
       ${list.length ? formSelect('setup-model', list.map(modelOption), selected?.id || '')
@@ -164,7 +164,7 @@ export async function saveAISetup() {
   const model = ($('#setup-model')?.value || '').trim();
   if (!key) { closeSheet(); return; }
   const prov = AIS.provider;
-  const config = { provider: prov, p: PROVIDERS[prov], key, model: model || PROVIDERS[prov].model, base: prov === 'custom' ? base : PROVIDERS[prov].base };
+  const config = { provider: prov, p: PROVIDERS[prov], key, model: model || PROVIDERS[prov].model, base: prov === 'custom' ? base : prov === 'pc' ? aiConfig('pc').base : PROVIDERS[prov].base };
   if (!config.model || (prov === 'custom' && !base)) { AIS.error = t('Fill in the server address and model.'); keepAi(rerenderSheet); return; }
   AIS.testing = true; AIS.error = ''; keepAi(rerenderSheet);
   try {

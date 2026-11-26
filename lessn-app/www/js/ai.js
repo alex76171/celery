@@ -36,6 +36,10 @@ export const PROVIDERS = {
     name: 'OpenRouter (many models)', keyUrl: 'https://openrouter.ai/keys', placeholder: 'sk-or-…', base: 'https://openrouter.ai/api/v1',
     audio: null, priceUrl: 'https://openrouter.ai/models', model: 'openrouter/auto', models: ['openrouter/auto'],
   },
+  pc: {
+    name: 'Lessn PC (local AI)', keyUrl: '', placeholder: '', base: '', audio: null, json: false, local: true,
+    model: '', models: [],
+  },
   custom: {
     name: 'Other (OpenAI-compatible)', keyUrl: '', placeholder: '', base: '', audio: 'transcribe', transcribeModel: 'whisper-1',
     model: '', models: [],
@@ -83,6 +87,7 @@ export function priceOf(provider, id, orPrice, base = '') {
     if (/flash|gemma/.test(id)) return { ...priceLabel(0.75, 3.75, false), free: true, kind: 'tier' };
     return null;
   }
+  if (provider === 'pc') return { free: true, kind: 'local' };
   if (provider === 'custom') {
     return /localhost|127\.0\.0\.1|192\.168\.|\/\/10\.|\.local\b/.test(base) ? { free: true, kind: 'local' } : null;
   }
@@ -106,10 +111,12 @@ const CLAUDE_FALLBACK_MODELS = /^claude-(opus-5-5|opus-5|sonnet-5-5|fable-5-1|fa
 export function aiConfig(provider = S.settings.aiProvider || 'gemini') {
   const p = PROVIDERS[provider] || PROVIDERS.gemini;
   const model = (S.settings.aiModels || {})[provider] || (provider === 'gemini' && S.settings.aiModel) || p.model;
-  const base = provider === 'custom' ? String(S.settings.aiBaseUrl || '').replace(/\/+$/, '') : p.base;
+  const base = provider === 'custom' ? String(S.settings.aiBaseUrl || '').replace(/\/+$/, '') : provider === 'pc' ? pcBase() : p.base;
   return { provider, p, key: store.aiKey(provider), model, base };
 }
-const usable = (c) => !!c.key && !!c.model && (c.provider !== 'custom' || !!c.base);
+const usable = (c) => !!c.key && !!c.model && ((c.provider !== 'custom' && c.provider !== 'pc') || !!c.base);
+/** The Lessn Hub on the paired PC forwards to its local AI (Ollama). */
+function pcBase() { try { const c = JSON.parse(localStorage.getItem('lessn:pc') || 'null'); return c?.base ? `${c.base}/ai/v1` : ''; } catch { return ''; } }
 /** Every provider the user linked (saved a key for), default first. */
 export function linkedAIs() {
   const def = S.settings.aiProvider || 'gemini';
@@ -270,7 +277,7 @@ export async function listModels(provider, key, base) {
     const j = await jsonOf(await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } }));
     items = (j.data || []).map((m) => ({ id: m.id, name: m.display_name }));
   } else {
-    const url = `${(provider === 'custom' ? base : p.base).replace(/\/+$/, '')}/models`;
+    const url = `${(provider === 'custom' ? base : provider === 'pc' ? pcBase() : p.base).replace(/\/+$/, '')}/models`;
     const j = await jsonOf(await fetch(url, { headers: { Authorization: `Bearer ${key}` } }));
     items = (j.data || j.models || []).map((m) => ({ id: m.id || m.name, name: m.name && m.name !== m.id ? m.name : '', pricing: m.pricing })).filter((m) => m.id);
     if (provider === 'openai') items = items.filter((m) => /^(gpt-|o\d|chatgpt)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding|instruct)/.test(m.id));

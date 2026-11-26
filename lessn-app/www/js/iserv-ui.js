@@ -465,7 +465,7 @@ export async function voiceStop(send) {
   I.room.messages = [...I.room.messages, tmp];
   paintMessages(true);
   try {
-    const res = await client().sendVoice(I.room.id, { path: r.path, duration: r.duration, size: r.size });
+    const res = await client().sendVoice(I.room.id, { path: r.path, duration: r.duration, size: r.size, mime: r.mime });
     tmp.id = res.event_id || tmp.id; tmp.pending = false;
     paintMessages(false);
   } catch (e) {
@@ -691,12 +691,14 @@ export function loadFiles(path = I.path, { paint = true } = {}) {
   return task('files', async () => { I.files = await c.files(path); });
 }
 
+/** Files: switch between IServ and the paired PC (on the PC: the phone). */
+const sourceSwitch = () => `<div class="src-switch"><button class="on">${icon('school')}IServ</button><button data-act="nav" data-view="pc">${icon(window.Capacitor?.isDesktop ? 'smartphone' : 'monitor')}${esc(window.Capacitor?.isDesktop ? t('Phone') : t('PC'))}</button></div>`;
 export function viewFiles() {
-  if (!I.files) { if (!I.error.files && !S.loading) loadFiles(I.path, { paint: false }); return `<div class="pad">${errBox('files', 'is-files-retry') || skeleton(6)}</div>`; }
+  if (!I.files) { if (!I.error.files && !S.loading) loadFiles(I.path, { paint: false }); return `<div class="pad">${sourceSwitch()}${errBox('files', 'is-files-retry') || skeleton(6)}</div>`; }
   const parts = I.path.split('/').filter(Boolean);
   const crumbs = [`<button data-act="files-go" data-p="/">${icon('house')}</button>`, ...parts.map((p, i) => `<button data-act="files-go" data-p="/${parts.slice(0, i + 1).join('/')}/">${esc(p)}</button>`)].join(icon('chevron-right', 'crumb-sep'));
   const list = I.files.slice().sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
-  return `<div class="crumbs">${crumbs}</div><div class="pad">
+  return `<div class="pad" style="padding-bottom:0">${sourceSwitch()}</div><div class="crumbs">${crumbs}</div><div class="pad">
     <div class="file-tools">
       <button class="btn small ghost" data-act="file-upload">${icon('upload')}${esc(t('Upload'))}</button>
       <button class="btn small ghost" data-act="file-mkdir">${icon('folder-plus')}${esc(t('New folder'))}</button>
@@ -1039,4 +1041,39 @@ export function mailAiUse(i) {
 export function openTaskFile(href, name) {
   const c = client();
   openViewer({ name: name || 'file', request: { url: href.startsWith('http') ? href : c.base + href, cookies: true } });
+}
+
+/** Lessn for Windows: checks IServ every 15 minutes (while Lessn runs in the tray) and shows Windows notifications. */
+export function desktopIServWatch() {
+  if (!window.Capacitor?.isDesktop || desktopIServWatch.on) return;
+  desktopIServWatch.on = true;
+  const check = async () => {
+    const c = client();
+    if (!c || !S.settings.iservNotify) return;
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem('lessn:desk:seen') || '{}'); } catch { /* fresh */ }
+    const first = !Object.keys(seen).length;
+    try {
+      const list = await c.notifications();
+      for (const n of list.filter((x) => !x.read && !seen[`n${x.id}`]).slice(0, 5)) {
+        seen[`n${n.id}`] = 1;
+        if (!first) native.notify?.({ title: n.title, body: n.text || 'IServ' }).catch?.(() => {});
+      }
+      for (const n of list) seen[`n${n.id}`] = 1;
+    } catch { /* offline */ }
+    try {
+      const rooms = await c.rooms();
+      for (const r of rooms.filter((x) => x.unread && x.last && !x.last.mine)) {
+        const k = `r${r.id}:${r.last.ts}`;
+        if (seen[k]) continue;
+        seen[k] = 1;
+        if (!first && !(S.view === 'is-room' && I.room?.id === r.id && !document.hidden)) native.notify?.({ title: r.name, body: r.last.body == null ? t('Encrypted message') : `${r.direct ? '' : `${r.last.sender}: `}${r.last.body}` }).catch?.(() => {});
+      }
+    } catch { /* messenger not available */ }
+    const keys = Object.keys(seen);
+    if (keys.length > 600) seen = Object.fromEntries(keys.slice(-400).map((k) => [k, 1]));
+    localStorage.setItem('lessn:desk:seen', JSON.stringify(seen));
+  };
+  setTimeout(check, 20000);
+  setInterval(check, 15 * 60000);
 }

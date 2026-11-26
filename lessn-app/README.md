@@ -1,15 +1,40 @@
-# Lessn: a better WebUntis client for Android
+# Lessn: a better WebUntis client for Android and Windows
 
-Lessn is an unofficial Android app for WebUntis. It shows your timetable, homework, exams and absences in a cleaner interface with more options.
+Lessn is an unofficial Android and Windows app for WebUntis. It shows your timetable, homework, exams and absences in a cleaner interface with more options.
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-2.8.0.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-3.0.0.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
 
 If the search can't find your school, tap **Enter the server manually** and type the server (e.g. `nessa.webuntis.com`, or paste the full URL) and the school login name (the `school=` value in that URL).
+
+## Lessn for Windows
+
+The installer is `lessn-desktop/Lessn-Setup-3.0.0.exe` (download it from GitHub on the PC).
+
+1. Run it. Windows SmartScreen may warn because the installer is not signed: click **More info → Run anyway**.
+2. Choose the folder and options: desktop shortcut, **Start with Windows (in the tray)** and **Allow phones in your network (firewall)** (asks for admin rights once; without it Windows asks the first time your phone connects — choose *Private networks*).
+3. Lessn opens with the same features and themes as the phone, laid out for a big screen (sidebar, dialogs instead of bottom sheets).
+4. **Already use Lessn on the phone?** The first screen on the PC shows a 6-digit code. On the phone open **Menu → PC → Search for my PC**, pick the PC and type the code. Your login, homework, notes, chats, AI keys and settings come over by themselves and the PC signs in.
+
+**Closing the window keeps Lessn running** in the hidden icons of the taskbar (so your phone can reach the PC and reminders still pop up). Right-click the tray icon → **Quit Lessn** to close it completely. Uninstall it in Windows Settings → Apps.
+
+### Phone ↔ PC (both in the same Wi-Fi)
+- **Pair**: on the phone *Menu → PC → Search for my PC* (or type the address shown on the PC), then the code from the PC's **Phone** page.
+- **Sync**: homework, notes, done-marks, AI chats, lesson summaries, study plans, grades and settings sync automatically (last change wins; layout settings stay per device). Logins and AI keys too, unless you turn that off.
+- **PC files on the phone**: the PC shares the folder `Documents\Lessn` (change it on the PC's Phone page). On the phone you can browse it, open files in the viewer, upload photos, camera shots, files and scans, make folders, rename and delete. Also reachable from **Files → PC**.
+- **Phone files on the PC**: on the phone choose *Share a folder with the PC* (e.g. Download or DCIM). The PC's Phone page then shows that folder: open files, send files to the phone, delete. This works while Lessn is open on the phone.
+- **Local AI (free, private, no internet)**: install [Ollama](https://ollama.com/download/windows) on the PC, then on the PC's Phone page download a model (Gemma 3 4B, Qwen 3 8B, Llama 3.2 3B, Qwen 2.5 VL or any other) and tap **Use it as an AI helper**. On the phone tap **Use the PC's AI** on the PC page. It then appears as "Lessn PC (local AI)" in AI helpers and can be the default or a backup.
+- The link uses your local network only (port 47900, discovery on UDP 47901), protected by a pairing code and a private token per phone.
+
+### What is different on the PC
+Lesson recording uses the PC's microphone (saved as MP3 so every AI accepts it); voice messages work too. Do Not Disturb and the "Are you at school?" location check are phone-only. IServ notifications and lesson reminders show as Windows notifications while Lessn runs in the tray.
+
+### Build the Windows app yourself
+In `lessn-desktop/`: `npm install`, then `npm start` to run it, or `npm run dist` to build the installer (needs `makensis` from NSIS; works on Windows, Linux or macOS, no Wine needed).
 
 ## First start
 

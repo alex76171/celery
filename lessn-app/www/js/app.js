@@ -1,4 +1,5 @@
 // App shell: navigation, rendering, gestures, events and startup.
+import './sync.js';
 import {
   S, t, $, $$, esc, icon, fmt, relDay, weekNumber, sameDay, startOfDay, addDays, mondayOf, toUntisDate, fromUntisDate, pad,
   store, applyTheme, syncBars, ddHandlers, uiConfirm, uiPrompt, closeMenu, closeDialog, toast, plugin, safe, closeSheet, sheetState, rerenderSheet, bindLongPress, bindRipple,
@@ -11,6 +12,7 @@ import {
 import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone, allExams } from './views.js';
 import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, aiModelPicked, openPricePage, loadAiModels, viewAISettings, unlinkAI, aiRowMenu } from './onboarding.js';
 import { viewerAction } from './viewer.js';
+import { viewPC, linkAction, linkInput, startLink, isDesktop } from './link.js';
 import {
   viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
   openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
@@ -21,21 +23,25 @@ import { renderLogin, bindLogin } from './login.js';
 import * as IS from './iserv-ui.js';
 import * as A from './assist.js';
 
-const tabList = () => [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }];
+const DESK_NAV = [['today', 'Home', 'house'], ['week', 'Timetable', 'calendar-days'], ['tasks', 'Homework', 'clipboard-list'], ['exams', 'Exams', 'graduation-cap'], ['ai', 'AI helper', 'sparkles'],
+  ['iserv', 'IServ', 'school'], ['is-chat', 'Messenger', 'messages-square'], ['is-mail', 'E-Mail', 'mail'], ['is-files', 'Files', 'folders'], ['grades', 'Grades', 'award'], ['recorder', 'Lesson recorder', 'mic'], ['pc', 'Phone', 'smartphone'], ['more', 'Menu', 'layout-grid']];
+const tabList = () => (isDesktop()
+  ? DESK_NAV.map(([id, label, ic]) => ({ id, label, icon: ic }))
+  : [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }]);
 const TITLES = {
-  grades: 'Grades', 'ai-settings': 'AI helpers', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
+  grades: 'Grades', 'ai-settings': 'AI helpers', pc: window.Capacitor?.isDesktop ? 'Phone' : 'PC', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
   'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications', 'is-tasks': 'Tasks',
   today: 'Home', week: 'Timetable', tasks: 'Homework', exams: 'Exams',
 };
 const PARENT = { 'is-chat': 'iserv', 'is-mail': 'iserv', 'is-files': 'iserv', 'is-cal': 'iserv', 'is-notes': 'iserv', 'is-tasks': 'iserv', 'is-room': 'is-chat', 'ai-chat': 'ai' };
-const isRoot = (v) => v === 'more' || A.userTabs().includes(v);
+const isRoot = (v) => v === 'more' || (isDesktop() ? DESK_NAV.some(([id]) => id === v) : A.userTabs().includes(v));
 const parentOf = (v) => PARENT[v] || 'more';
 const rootOf = (v) => { let x = v; for (let i = 0; i < 4 && !isRoot(x); i++) x = parentOf(x); return x; };
 const SUBVIEWS = new Proxy({}, { get: (_, v) => (typeof v === 'string' && !isRoot(v) ? TITLES[v] || v : undefined) });
-const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room', 'ai-settings'];
+const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room', 'ai-settings', 'pc'];
 
 // ---------------------------------------------------------------- shell
-const navHtml = () => `<nav class="tabs"><span class="tab-ind" id="tab-ind"></span>${tabList().map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>`;
+const navHtml = () => `<nav class="tabs">${isDesktop() ? `<div class="side-brand"><img src="icon.png" alt=""><b>Lessn</b></div>` : ''}<span class="tab-ind" id="tab-ind"></span>${tabList().map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>`;
 function renderShell() {
   document.body.innerHTML = `
   <div class="bg-blobs" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -114,7 +120,7 @@ export function render() {
   const views = {
     today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance,
     recorder: viewRecorder, iserv: IS.viewIServHub, 'is-chat': IS.viewChats, 'is-room': IS.viewRoom, 'is-mail': IS.viewMail,
-    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat, 'ai-settings': viewAISettings,
+    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat, 'ai-settings': viewAISettings, pc: viewPC,
   };
   if ((S.view === 'is-room' || S.view === 'ai-chat') && lastView === S.view && !S.anim) { updateHeader(); return; }
   content.innerHTML = views[S.view]();
@@ -246,6 +252,7 @@ function onClick(e) {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const d = el.dataset;
+  if (d.act.startsWith('pc-') || d.act.startsWith('ph-')) { if (linkAction(d.act, d, el)) return; }
   switch (d.act) {
     case 'tab': setView(d.view); break;
     case 'nav': closeSheet(true); if (d.view === 'is-room') break; setView(d.view, 'left'); break;
@@ -427,6 +434,7 @@ function onClick(e) {
 function onInput(e) {
   const el = e.target;
   if (el.id === 'browse-q') { openBrowse.setQuery(el.value); return; }
+  if (el.type === 'file' && linkInput(el)) return;
   if (el.id === 'room-q') { IS.filterRooms(el.value); return; }
   if (el.id === 'chat-photo' || el.id === 'chat-camera') { IS.sendFiles(el.files, true); el.value = ''; return; }
   if (el.id === 'chat-file') { IS.sendFiles(el.files, false); el.value = ''; return; }
@@ -475,6 +483,8 @@ export function startApp(api) {
   refresh();
   scheduleNative();
   maybeRunSetup();
+  startLink();
+  IS.desktopIServWatch();
   const isAcc = store.iserv();
   if (isAcc && S.settings.iservNotify) native.iservBackground({ enabled: true, host: isAcc.host, username: isAcc.username, password: isAcc.password, chats: true });
   timers.forEach(clearInterval);
@@ -544,7 +554,25 @@ function boot() {
     safe(plugin('App').exitApp());
   });
   if (S.account) startApp();
-  else { bindLogin(); renderLogin(); }
+  else {
+    bindLogin(); renderLogin();
+    if (isDesktop()) { startLink(); phoneSignInCard(); }
+  }
+}
+
+/** PC only: sign in by pairing the phone (its login arrives through sync). */
+async function phoneSignInCard() {
+  const D = window.lessnDesktop;
+  const draw = async () => {
+    if (S.account) return;
+    let c;
+    try { c = await D.invoke('hubPairCode'); } catch { return; }
+    let el = document.getElementById('phone-signin');
+    if (!el) { el = document.createElement('div'); el.id = 'phone-signin'; el.className = 'phone-signin'; document.body.appendChild(el); }
+    el.innerHTML = `${icon('smartphone')}<div><b>${esc(t('Already use Lessn on your phone?'))}</b><small>${esc(t('On the phone: Menu → PC → Search for my PC, then enter'))}</small><span class="pair-code small">${esc(`${c.code.slice(0, 3)} ${c.code.slice(3)}`)}</span><small>${esc(t('Your login, homework and settings come over by themselves.'))}</small></div>`;
+  };
+  draw();
+  setInterval(draw, 15000);
 }
 
 boot();

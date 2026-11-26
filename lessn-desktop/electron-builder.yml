@@ -1,0 +1,26 @@
+appId: app.lessn.desktop
+productName: Lessn
+directories:
+  output: dist
+files:
+  - main.js
+  - preload.js
+  - hub.js
+  - bridge/**
+  - app/**
+  - node_modules/pdfjs-dist/legacy/build/pdf.min.mjs
+  - node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs
+  - node_modules/lamejs/lame.min.js
+  - "!node_modules/**/*.map"
+win:
+  target: dir
+  icon: build/icon.png
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Lessn
+  artifactName: Lessn-Setup-${version}.exe
+electronLanguages: [en-US, de, tr, fr, es, pl, ru, uk, ar]

@@ -601,6 +601,209 @@ public class LessnPlugin extends Plugin {
         }).start();
     }
 
+    // ------------------------------------------------------------ PC link: find Lessn on PCs in the same Wi-Fi
+    @PluginMethod
+    public void discoverPcs(PluginCall call) {
+        new Thread(() -> {
+            android.net.wifi.WifiManager.MulticastLock lock = null;
+            try (java.net.DatagramSocket sock = new java.net.DatagramSocket()) {
+                android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getContext().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) { lock = wm.createMulticastLock("lessn"); lock.acquire(); }
+                sock.setBroadcast(true);
+                sock.setSoTimeout(400);
+                byte[] msg = "LESSN_DISCOVER".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                java.util.Set<String> targets = new java.util.LinkedHashSet<>();
+                targets.add("255.255.255.255");
+                for (java.util.Enumeration<java.net.NetworkInterface> en = java.net.NetworkInterface.getNetworkInterfaces(); en != null && en.hasMoreElements();) {
+                    java.net.NetworkInterface ni = en.nextElement();
+                    if (!ni.isUp() || ni.isLoopback()) continue;
+                    for (java.net.InterfaceAddress ia : ni.getInterfaceAddresses()) if (ia.getBroadcast() != null) targets.add(ia.getBroadcast().getHostAddress());
+                }
+                JSONArray found = new JSONArray();
+                java.util.Set<String> seen = new java.util.HashSet<>();
+                long end = System.currentTimeMillis() + Math.max(800, call.getInt("timeout", 2500));
+                int round = 0;
+                while (System.currentTimeMillis() < end) {
+                    if (round++ % 3 == 0) for (String t : targets) {
+                        try { sock.send(new java.net.DatagramPacket(msg, msg.length, java.net.InetAddress.getByName(t), 47901)); } catch (Exception ignored) { }
+                    }
+                    try {
+                        byte[] buf = new byte[2048];
+                        java.net.DatagramPacket pk = new java.net.DatagramPacket(buf, buf.length);
+                        sock.receive(pk);
+                        String txt = new String(pk.getData(), 0, pk.getLength(), java.nio.charset.StandardCharsets.UTF_8);
+                        if (!txt.startsWith("LESSN_HERE ")) continue;
+                        String addr = pk.getAddress().getHostAddress();
+                        if (!seen.add(addr)) continue;
+                        JSONObject info = new JSONObject(txt.substring(11));
+                        JSONObject o = new JSONObject();
+                        o.put("address", addr);
+                        o.put("name", info.optString("name", addr));
+                        o.put("port", info.optInt("port", 47900));
+                        o.put("version", info.optString("version", ""));
+                        found.put(o);
+                    } catch (java.net.SocketTimeoutException ignored) { }
+                }
+                JSObject r = new JSObject();
+                r.put("pcs", found);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Search failed" : e.getMessage());
+            } finally {
+                if (lock != null && lock.isHeld()) lock.release();
+            }
+        }).start();
+    }
+
+    // ------------------------------------------------------------ PC link: a phone folder the PC may use (Storage Access Framework)
+    @PluginMethod
+    public void pickFolder(PluginCall call) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        startActivityForResult(call, i, "pickFolderResult");
+    }
+
+    @com.getcapacitor.annotation.ActivityCallback
+    private void pickFolderResult(PluginCall call, androidx.activity.result.ActivityResult result) {
+        if (call == null) return;
+        if (result.getResultCode() != android.app.Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) { call.reject("cancelled"); return; }
+        Uri tree = result.getData().getData();
+        try {
+            getContext().getContentResolver().takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        } catch (Exception ignored) { }
+        String docId = android.provider.DocumentsContract.getTreeDocumentId(tree);
+        String name = docId.contains(":") ? docId.substring(docId.indexOf(':') + 1) : docId;
+        if (name.isEmpty()) name = docId.startsWith("primary") ? "Internal storage" : docId;
+        if (name.contains("/")) name = name.substring(name.lastIndexOf('/') + 1);
+        JSObject r = new JSObject();
+        r.put("uri", tree.toString());
+        r.put("name", name);
+        call.resolve(r);
+    }
+
+    private static final String[] DOC_COLS = {
+        android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+        android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE, android.provider.DocumentsContract.Document.COLUMN_SIZE,
+        android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED };
+
+    /** Walks from the shared folder down a "/a/b/c" path and returns the document id. */
+    private String resolveDoc(Uri tree, String path) throws Exception {
+        String id = android.provider.DocumentsContract.getTreeDocumentId(tree);
+        for (String part : path.split("/")) {
+            if (part.isEmpty()) continue;
+            if (part.equals("..")) throw new SecurityException("Invalid path");
+            String next = null;
+            Uri kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, id);
+            try (android.database.Cursor c = getContext().getContentResolver().query(kids, DOC_COLS, null, null, null)) {
+                while (c != null && c.moveToNext()) if (part.equals(c.getString(1))) { next = c.getString(0); break; }
+            }
+            if (next == null) throw new java.io.FileNotFoundException(part + " not found");
+            id = next;
+        }
+        return id;
+    }
+
+    @PluginMethod
+    public void treeList(PluginCall call) {
+        new Thread(() -> {
+            try {
+                Uri tree = Uri.parse(call.getString("uri"));
+                String path = call.getString("path", "/");
+                String id = resolveDoc(tree, path);
+                JSONArray items = new JSONArray();
+                Uri kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, id);
+                try (android.database.Cursor c = getContext().getContentResolver().query(kids, DOC_COLS, null, null, null)) {
+                    while (c != null && c.moveToNext()) {
+                        String name = c.getString(1);
+                        if (name == null || name.startsWith(".")) continue;
+                        boolean dir = android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2));
+                        JSONObject o = new JSONObject();
+                        String base = path.endsWith("/") ? path : path + "/";
+                        o.put("name", name);
+                        o.put("path", base + name + (dir ? "/" : ""));
+                        o.put("isDir", dir);
+                        o.put("type", dir ? "" : c.getString(2));
+                        o.put("size", c.isNull(3) ? 0 : c.getLong(3));
+                        if (!c.isNull(4)) o.put("modified", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US) {{ setTimeZone(java.util.TimeZone.getTimeZone("UTC")); }}.format(new java.util.Date(c.getLong(4))));
+                        items.put(o);
+                    }
+                }
+                JSObject r = new JSObject();
+                r.put("items", items);
+                call.resolve(r);
+            } catch (Exception e) { call.reject(e.getMessage() == null ? "Cannot read folder" : e.getMessage()); }
+        }).start();
+    }
+
+    @PluginMethod
+    public void treeRead(PluginCall call) {
+        new Thread(() -> {
+            try {
+                Uri tree = Uri.parse(call.getString("uri"));
+                String path = call.getString("path");
+                Uri doc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, resolveDoc(tree, path));
+                String name = path.replaceAll("/+$", "");
+                name = name.substring(name.lastIndexOf('/') + 1);
+                File dir = new File(getContext().getCacheDir(), "open/" + System.currentTimeMillis());
+                dir.mkdirs();
+                File out = new File(dir, name.replaceAll("[\\\\/:*?\"<>|]", "_"));
+                try (java.io.InputStream in = getContext().getContentResolver().openInputStream(doc); java.io.FileOutputStream o = new java.io.FileOutputStream(out)) {
+                    byte[] buf = new byte[65536]; int n; long total = 0;
+                    while ((n = in.read(buf)) > 0) { o.write(buf, 0, n); total += n; if (total > 300_000_000L) throw new Exception("File too big"); }
+                }
+                JSObject r = new JSObject();
+                r.put("path", out.getAbsolutePath());
+                r.put("name", name);
+                r.put("size", out.length());
+                r.put("mime", guessMime(name, getContext().getContentResolver().getType(doc)));
+                call.resolve(r);
+            } catch (Exception e) { call.reject(e.getMessage() == null ? "Cannot read file" : e.getMessage()); }
+        }).start();
+    }
+
+    @PluginMethod
+    public void treeWrite(PluginCall call) {
+        new Thread(() -> {
+            try {
+                Uri tree = Uri.parse(call.getString("uri"));
+                String parentId = resolveDoc(tree, call.getString("path", "/"));
+                Uri parent = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, parentId);
+                String name = call.getString("name", "file").replaceAll("[\\\\/:*?\"<>|]", "_");
+                Uri created = android.provider.DocumentsContract.createDocument(getContext().getContentResolver(), parent, guessMime(name, null), name);
+                if (created == null) throw new Exception("Cannot create file");
+                try (java.io.OutputStream o = getContext().getContentResolver().openOutputStream(created); FileInputStream in = new FileInputStream(safeAnyFile(call.getString("source")))) {
+                    byte[] buf = new byte[65536]; int n; while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                }
+                call.resolve();
+            } catch (Exception e) { call.reject(e.getMessage() == null ? "Cannot write file" : e.getMessage()); }
+        }).start();
+    }
+
+    @PluginMethod
+    public void treeDelete(PluginCall call) {
+        new Thread(() -> {
+            try {
+                Uri tree = Uri.parse(call.getString("uri"));
+                String path = call.getString("path", "/");
+                if (path.replace("/", "").isEmpty()) throw new Exception("Cannot delete the shared folder");
+                android.provider.DocumentsContract.deleteDocument(getContext().getContentResolver(), android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, resolveDoc(tree, path)));
+                call.resolve();
+            } catch (Exception e) { call.reject(e.getMessage() == null ? "Cannot delete" : e.getMessage()); }
+        }).start();
+    }
+
+    @PluginMethod
+    public void treeMkdir(PluginCall call) {
+        new Thread(() -> {
+            try {
+                Uri tree = Uri.parse(call.getString("uri"));
+                Uri parent = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, resolveDoc(tree, call.getString("path", "/")));
+                android.provider.DocumentsContract.createDocument(getContext().getContentResolver(), parent, android.provider.DocumentsContract.Document.MIME_TYPE_DIR, call.getString("name", "Folder"));
+                call.resolve();
+            } catch (Exception e) { call.reject(e.getMessage() == null ? "Cannot create folder" : e.getMessage()); }
+        }).start();
+    }
+
     /** Opens a cached file in another app (PDF viewer, Office, gallery…). */
     @PluginMethod
     public void openFile(PluginCall call) {

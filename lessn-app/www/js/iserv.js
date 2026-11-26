@@ -520,10 +520,10 @@ export class IServ {
     return this.sendContent(roomId, { msgtype: 'm.file', body: name, filename: name, url, info: { mimetype: mime, size } });
   }
 
-  async sendVoice(roomId, { path, duration, size }) {
-    const url = await this.upload({ path, mime: 'audio/mp4', name: 'voice-message.m4a' });
+  async sendVoice(roomId, { path, duration, size, mime = 'audio/mp4' }) {
+    const url = await this.upload({ path, mime, name: mime.includes('webm') ? 'voice-message.webm' : 'voice-message.m4a' });
     return this.sendContent(roomId, {
-      msgtype: 'm.audio', body: 'Voice message', url, info: { mimetype: 'audio/mp4', size, duration },
+      msgtype: 'm.audio', body: 'Voice message', url, info: { mimetype: mime, size, duration },
       'org.matrix.msc1767.audio': { duration }, 'org.matrix.msc3245.voice': {},
     });
   }

@@ -1,0 +1,25 @@
+{
+  "name": "lessn-desktop",
+  "productName": "Lessn",
+  "version": "3.0.0",
+  "description": "Lessn for Windows: timetable, IServ, AI helper and phone link",
+  "main": "main.js",
+  "author": "Lessn",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "copy-www": "node tools/copy-www.mjs",
+    "start": "npm run copy-www && electron .",
+    "dist": "npm run copy-www && electron-builder --win dir --x64 && node tools/win-finish.mjs"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "pe-library": "^1.0.1",
+    "resedit": "^2.0.2"
+  },
+  "dependencies": {
+    "lamejs": "^1.2.1",
+    "pdfjs-dist": "^4.10.38"
+  }
+}
