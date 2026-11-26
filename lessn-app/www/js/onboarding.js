@@ -1,6 +1,6 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
 import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect } from './core.js';
-import { PROVIDERS, listModels, complete } from './ai.js';
+import { PROVIDERS, listModels, catalog, priceOf, complete } from './ai.js';
 import { native, hasNative } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
 import { render } from './app.js';
@@ -50,12 +50,14 @@ export async function detectIServ(school) {
 }
 
 // ---------------------------------------------------------------- AI setup sheet
-const AIS = { provider: 'gemini', models: null, loading: false, error: '', testing: false };
+const AIS = { provider: 'gemini', models: null, loading: false, error: '', testing: false, picked: '' };
 
 function aiForm() {
   const p = PROVIDERS[AIS.provider];
-  const cur = (S.settings.aiModels || {})[AIS.provider] || (AIS.provider === 'gemini' && S.settings.aiModel) || p.model;
-  const models = AIS.models || (cur ? [cur] : []);
+  const cur = AIS.picked || (S.settings.aiModels || {})[AIS.provider] || (AIS.provider === 'gemini' && S.settings.aiModel) || p.model;
+  const list = AIS.models || catalog(AIS.provider);
+  if (cur && !list.some((m) => m.id === cur)) list.unshift({ id: cur, name: '', price: priceOf(AIS.provider, cur, null, S.settings.aiBaseUrl) });
+  const selected = list.find((m) => m.id === cur) || list[0];
   return `<div class="setup">
     <div class="setup-orb">${icon('sparkles')}</div>
     <h2>${esc(t('Meet your AI helper'))}</h2>
@@ -70,16 +72,51 @@ function aiForm() {
     <label class="input">${icon('key-round')}<input id="setup-key" type="password" placeholder="${esc(p.placeholder)}" value="${esc(store.aiKey(AIS.provider))}" autocomplete="off"></label>
     <label class="lbl">${esc(t('Model'))}</label>
     <div class="model-row">
-      ${AIS.models ? formSelect('setup-model', models.map((m) => [m, m]), cur && models.includes(cur) ? cur : models[0] || '')
+      ${list.length ? formSelect('setup-model', list.map(modelOption), selected?.id || '')
         : `<label class="input">${icon('cpu')}<input id="setup-model" value="${esc(cur)}" placeholder="${esc(p.model || 'model-name')}" autocapitalize="off" autocorrect="off"></label>`}
       <button class="icon-btn" data-act="ai-load-models" aria-label="${esc(t('Load models'))}">${icon(AIS.loading ? 'refresh-cw' : 'list', AIS.loading ? 'spin-ic' : '')}</button>
     </div>
+    <div class="model-price" id="setup-price">${priceLine(selected)}</div>
+    <p class="hint">${icon('info', 'mini')} ${esc(AIS.models ? t('These are all models your key can use. Prices are per 1M tokens (input / output) and can change.') : t('Tap the list button after entering your key to see every model your account can use.'))}${p.priceUrl ? ` <button class="link" data-act="ai-prices">${esc(t('Price list'))}</button>` : ''}</p>
     ${PROVIDERS[AIS.provider].audio ? '' : `<p class="hint">${icon('info', 'mini')} ${esc(t('This provider cannot listen to lesson recordings. For summaries, also add a Gemini, OpenAI or Mistral key.'))}</p>`}
     ${AIS.error ? `<div class="err shake">${icon('circle-alert')}<span>${esc(AIS.error)}</span></div>` : ''}
     <button class="btn" data-act="setup-ai-save" ${AIS.testing ? 'disabled' : ''}>${AIS.testing ? `${icon('refresh-cw', 'spin-ic')}${esc(t('Testing…'))}` : esc(t('Save'))}</button>
     <button class="link center" data-act="setup-ai-skip">${esc(t('Skip for now'))}</button>
   </div>`;
 }
+/** Dropdown entry for a model: [id, label, price line, tag] */
+function modelOption(m) {
+  const pr = m.price;
+  return [m.id, m.name && m.name !== m.id ? m.name : m.id, priceSub(pr, true), priceTag(pr)];
+}
+function priceSub(pr, short = false) {
+  if (!pr) return t('Price unknown');
+  if (pr.kind === 'free') return t('No cost');
+  if (pr.kind === 'local') return t('Runs on your own server');
+  if (pr.kind === 'auto') return t('Costs what the chosen model costs');
+  return `${pr.label} ${t('per 1M tokens')}${pr.kind === 'tier' && !short ? ` · ${t('after the free limit')}` : ''}`;
+}
+function priceTag(pr) {
+  if (!pr) return null;
+  if (pr.kind === 'free' || pr.kind === 'local') return { text: t('Free'), cls: 'free' };
+  if (pr.kind === 'tier') return { text: t('Free tier'), cls: 'tier' };
+  if (pr.kind === 'auto') return { text: t('Varies') };
+  return null; // paid: the price line says it
+}
+function priceLine(m) {
+  if (!m) return '';
+  const pr = m.price; const tag = priceTag(pr);
+  const per = pr?.perAnswer ? ` · ${t('about {price} per answer', { price: pr.perAnswer })}` : '';
+  return `${tag ? `<em class="pi-tag ${tag.cls || ''}">${esc(tag.text)}</em>` : icon('coins')}<span>${esc(priceSub(pr) + per)}</span>`;
+}
+/** Updates the price line when another model is picked. */
+export function aiModelPicked(id) {
+  AIS.picked = id;
+  const m = (AIS.models || catalog(AIS.provider)).find((x) => x.id === id) || { id, price: priceOf(AIS.provider, id, null, $('#setup-base')?.value) };
+  const el = $('#setup-price'); if (el) el.innerHTML = priceLine(m);
+}
+export function openPricePage() { const p = PROVIDERS[AIS.provider]; if (p.priceUrl) native.openUrl(p.priceUrl); }
+
 function keepAi(fn) {
   const v = { k: $('#setup-key')?.value, b: $('#setup-base')?.value, m: $('#setup-model')?.value };
   fn();
@@ -89,25 +126,32 @@ function keepAi(fn) {
 }
 
 export function openAISetup(next) {
-  Object.assign(AIS, { provider: S.settings.aiProvider || 'gemini', models: null, loading: false, error: '', testing: false });
+  Object.assign(AIS, { provider: S.settings.aiProvider || 'gemini', models: null, loading: false, error: '', testing: false, picked: '' });
   openSheet(aiForm, { full: true, onClose: () => { const n = next; next = null; n?.(); } });
+  if (store.aiKey(AIS.provider)) loadAiModels(true);
 }
 export function setAiProvider(id) {
-  Object.assign(AIS, { provider: id, models: null, error: '' });
+  Object.assign(AIS, { provider: id, models: null, error: '', loading: false, picked: '' });
   rerenderSheet();
+  if (store.aiKey(id)) loadAiModels(true);
 }
 export function openKeyPage() { const p = PROVIDERS[AIS.provider]; if (p.keyUrl) native.openUrl(p.keyUrl); }
 
-export async function loadAiModels() {
+export async function loadAiModels(quiet = false) {
   const key = $('#setup-key')?.value.trim();
-  const base = $('#setup-base')?.value.trim();
-  if (!key) { AIS.error = t('Add an AI key first.'); keepAi(rerenderSheet); return; }
+  const base = $('#setup-base')?.value.trim() || S.settings.aiBaseUrl || '';
+  if (!key) { if (!quiet) { AIS.error = t('Add an AI key first.'); keepAi(rerenderSheet); } return; }
+  if (AIS.loading) return;
+  const prov = AIS.provider;
   AIS.loading = true; AIS.error = ''; keepAi(rerenderSheet);
   try {
-    const r = await listModels(AIS.provider, key, base);
-    AIS.models = r.ids;
-    S.settings.aiModels = { ...(S.settings.aiModels || {}), [AIS.provider]: ((S.settings.aiModels || {})[AIS.provider] && r.ids.includes(S.settings.aiModels[AIS.provider])) ? S.settings.aiModels[AIS.provider] : r.best };
-  } catch (e) { AIS.error = e.message; }
+    const r = await listModels(prov, key, base);
+    if (prov !== AIS.provider) return;
+    AIS.models = r.models;
+    const picked = $('#setup-model')?.value;
+    const keep = [picked, (S.settings.aiModels || {})[prov]].find((m) => m && r.ids.includes(m));
+    S.settings.aiModels = { ...(S.settings.aiModels || {}), [prov]: keep || r.best };
+  } catch (e) { if (prov !== AIS.provider) return; if (!quiet) AIS.error = e.message; }
   AIS.loading = false;
   keepAi(rerenderSheet);
 }

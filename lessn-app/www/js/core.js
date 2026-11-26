@@ -5,7 +5,7 @@ import { pad, toUntisDate, fromUntisDate } from './api.js';
 import { store } from './store.js';
 
 export { pad, toUntisDate, fromUntisDate, store };
-export const VERSION = '2.6.0';
+export const VERSION = '2.7.0';
 
 // ---------------------------------------------------------------- basics
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -300,8 +300,15 @@ export function openMenu(anchor, options, value, onPick, title = '') {
   closeMenu();
   const root = menuRoot();
   menuState = { onPick };
-  root.innerHTML = `<div class="menu-scrim"></div><div class="pop-menu" role="listbox">${title ? `<div class="pop-title">${esc(title)}</div>` : ''}${options.map(([v, l]) => `<button type="button" class="pop-item ${String(v) === String(value) ? 'on' : ''}" data-v="${esc(v)}"><span>${esc(l)}</span>${String(v) === String(value) ? icon('check') : ''}</button>`).join('')}</div>`;
+  // options: [value, label, sub?, tag?]  tag: { text, cls } shown as a pill (e.g. "Free")
+  const item = ([v, l, sub, tag]) => `<button type="button" class="pop-item ${sub ? 'two' : ''} ${String(v) === String(value) ? 'on' : ''}" data-v="${esc(v)}" data-q="${esc(`${v} ${l} ${tag?.text || ''}`.toLowerCase())}"><span class="pi-main"><span>${esc(l)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${tag ? `<em class="pi-tag ${esc(tag.cls || '')}">${esc(tag.text)}</em>` : ''}${String(v) === String(value) ? icon('check') : ''}</button>`;
+  const search = options.length > 12;
+  root.innerHTML = `<div class="menu-scrim"></div><div class="pop-menu ${search ? 'has-search' : ''}" role="listbox">${title ? `<div class="pop-title">${esc(title)}</div>` : ''}${search ? `<label class="pop-search">${icon('search')}<input type="search" placeholder="${esc(t('Search'))}" autocomplete="off" autocapitalize="off"></label>` : ''}<div class="pop-list">${options.map(item).join('')}</div></div>`;
   const pop = $('.pop-menu', root);
+  if (search) {
+    const q = $('.pop-search input', pop);
+    q.oninput = () => { const v = q.value.trim().toLowerCase(); for (const b of pop.querySelectorAll('.pop-item')) b.hidden = !!v && !b.dataset.q.includes(v); };
+  }
   placePopover(pop, anchor);
   root.getBoundingClientRect();
   root.classList.add('open');
@@ -404,7 +411,7 @@ document.addEventListener('click', (e) => {
       d.value = v;
       const txt = b.querySelector('.dd-val, .dd-text');
       if (txt) txt.textContent = label;
-      if (d.act === 'form') { const inp = document.getElementById(d.key); if (inp) inp.value = v; return; }
+      if (d.act === 'form') { const inp = document.getElementById(d.key); if (inp) inp.value = v; ddHandlers.pick?.('form', d.key, v, label, b); return; }
       ddHandlers.pick?.(d.act, d.key, v, label, b);
     });
     return;

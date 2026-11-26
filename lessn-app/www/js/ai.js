@@ -12,31 +12,92 @@ export const LANG_NAME = { en: 'English', de: 'German', tr: 'Turkish', fr: 'Fren
 export const PROVIDERS = {
   gemini: {
     name: 'Google Gemini', keyUrl: 'https://aistudio.google.com/apikey', placeholder: 'AIza…', audio: 'native',
-    model: 'gemini-flash-latest', models: ['gemini-flash-latest', 'gemini-pro-latest'],
+    priceUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+    model: 'gemini-flash-latest', models: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest'],
   },
   openai: {
     name: 'OpenAI (ChatGPT)', keyUrl: 'https://platform.openai.com/api-keys', placeholder: 'sk-…', base: 'https://api.openai.com/v1',
     audio: 'transcribe', transcribeModel: 'whisper-1', json: true,
-    model: 'gpt-4o-mini', models: ['gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o-mini'],
+    priceUrl: 'https://openai.com/api/pricing',
+    model: 'gpt-4o-mini', models: ['gpt-5-mini', 'gpt-5-nano', 'gpt-5', 'gpt-4.1-mini', 'gpt-4o-mini'],
   },
   anthropic: {
     name: 'Anthropic Claude', keyUrl: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…', audio: null,
+    priceUrl: 'https://www.anthropic.com/pricing#api',
     model: 'claude-opus-5-5', models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
   },
   mistral: {
     name: 'Mistral', keyUrl: 'https://console.mistral.ai/api-keys', placeholder: '', base: 'https://api.mistral.ai/v1',
     audio: 'transcribe', transcribeModel: 'voxtral-mini-latest', json: true,
+    priceUrl: 'https://mistral.ai/pricing#api-pricing',
     model: 'mistral-medium-latest', models: ['mistral-medium-latest', 'mistral-small-latest', 'mistral-large-latest'],
   },
   openrouter: {
     name: 'OpenRouter (many models)', keyUrl: 'https://openrouter.ai/keys', placeholder: 'sk-or-…', base: 'https://openrouter.ai/api/v1',
-    audio: null, model: 'openrouter/auto', models: ['openrouter/auto'],
+    audio: null, priceUrl: 'https://openrouter.ai/models', model: 'openrouter/auto', models: ['openrouter/auto'],
   },
   custom: {
     name: 'Other (OpenAI-compatible)', keyUrl: '', placeholder: '', base: '', audio: 'transcribe', transcribeModel: 'whisper-1',
     model: '', models: [],
   },
 };
+
+// ---------------------------------------------------------------- prices
+// USD per 1M tokens (input / output). Claude prices are Anthropic's list prices; the others are approximate
+// (checked November 2026) and can change, so the app marks them with "≈" and links the provider's price page.
+const PRICES = {
+  anthropic: [
+    [/^claude-fable-5-2/, 8, 40], [/^claude-mythos-5-2/, 8, 40], [/^claude-fable-5-1/, 10, 50], [/^claude-mythos-5-1/, 10, 50],
+    [/^claude-fable-5\b/, 10, 50], [/^claude-opus-5-5/, 4, 20], [/^claude-opus-5\b/, 5, 25], [/^claude-opus-4-[678]/, 5, 25],
+    [/^claude-sonnet-5-5/, 2, 10], [/^claude-sonnet-5\b/, 2, 10], [/^claude-sonnet-4-6/, 3, 15], [/^claude-haiku-5-5/, 0.1, 0.5],
+    [/^claude-haiku-4-5/, 1, 5],
+  ],
+  openai: [
+    [/^gpt-5\.4-nano/, 0.2, 1.25], [/^gpt-5\.4-mini/, 0.75, 4.5], [/^gpt-5-nano/, 0.05, 0.4], [/^gpt-5-mini/, 0.25, 2], [/^gpt-5(-|$)/, 1.25, 10],
+    [/^gpt-4\.1-nano/, 0.1, 0.4], [/^gpt-4\.1-mini/, 0.4, 1.6], [/^gpt-4\.1/, 2, 8], [/^gpt-4o-mini/, 0.15, 0.6], [/^gpt-4o/, 2.5, 10],
+    [/^o4-mini/, 1.1, 4.4], [/^o3-mini/, 1.1, 4.4], [/^o3(-|$)/, 2, 8],
+  ],
+  mistral: [
+    [/ministral-3b/, 0.1, 0.1], [/small/, 0.15, 0.6], [/medium/, 1.5, 7.5], [/large/, 0.7, 2.1],
+  ],
+};
+const EXACT = { anthropic: true };
+const fmtUsd = (n) => (n >= 1 && n % 1 === 0 ? `$${n}` : n >= 0.01 ? `$${n.toFixed(2)}` : `$${Number(n.toPrecision(2))}`);
+
+/**
+ * Price of a model: { free, kind, label, perAnswer } or null when unknown.
+ * kind: 'free' | 'tier' (free tier, then paid) | 'paid' | 'auto' | 'local'. orPrice: OpenRouter pricing (USD per token).
+ */
+export function priceOf(provider, id, orPrice, base = '') {
+  if (provider === 'openrouter') {
+    if (id === 'openrouter/auto') return { free: false, kind: 'auto' };
+    if (/:free$/.test(id)) return { free: true, kind: 'free' };
+    if (!orPrice) return null;
+    const i = Number(orPrice.prompt) * 1e6; const o = Number(orPrice.completion) * 1e6;
+    if (!(i > 0) && !(o > 0)) return { free: true, kind: 'free' };
+    return priceLabel(i, o, true);
+  }
+  if (provider === 'gemini') {
+    if (/pro/.test(id)) return { ...priceLabel(2, 12, false), kind: 'paid' };
+    if (/lite/.test(id)) return { ...priceLabel(0.25, 1.5, false), free: true, kind: 'tier' };
+    if (/flash|gemma/.test(id)) return { ...priceLabel(0.75, 3.75, false), free: true, kind: 'tier' };
+    return null;
+  }
+  if (provider === 'custom') {
+    return /localhost|127\.0\.0\.1|192\.168\.|\/\/10\.|\.local\b/.test(base) ? { free: true, kind: 'local' } : null;
+  }
+  const hit = (PRICES[provider] || []).find(([re]) => re.test(id));
+  return hit ? priceLabel(hit[1], hit[2], !!EXACT[provider]) : null;
+}
+function priceLabel(i, o, exact) {
+  // A typical homework answer: ~1,500 tokens in, ~600 tokens out
+  const per = (i * 1500 + o * 600) / 1e6;
+  return {
+    free: false, kind: 'paid',
+    label: `${exact ? '' : '≈ '}${fmtUsd(i)} / ${fmtUsd(o)}`,
+    perAnswer: per < 0.0001 ? '< $0.0001' : fmtUsd(per),
+  };
+}
 
 // Claude models that accept the server-side refusal fallback (re-runs a declined request on a suitable model).
 const CLAUDE_FALLBACK_MODELS = /^claude-(opus-5-5|opus-5|sonnet-5-5|fable-5-1|fable-5-2)$/;
@@ -159,25 +220,39 @@ export function chat({ messages, system }) {
 }
 
 // ---------------------------------------------------------------- model lists
-/** Lists the models an account can use (for the model dropdown). */
+/** Lists the models an account can use, with prices: { models: [{ id, name, price }], ids, best } */
 export async function listModels(provider, key, base) {
   const p = PROVIDERS[provider];
-  let ids = [];
+  let items = [];
   if (provider === 'gemini') {
     const j = await jsonOf(await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } }));
-    ids = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => m.name.replace(/^models\//, ''));
+    items = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent') && !/embedding|aqa|imagen|tts|image-generation|native-audio|live/.test(m.name))
+      .map((m) => ({ id: m.name.replace(/^models\//, ''), name: m.displayName }));
   } else if (provider === 'anthropic') {
     const j = await jsonOf(await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } }));
-    ids = (j.data || []).map((m) => m.id);
+    items = (j.data || []).map((m) => ({ id: m.id, name: m.display_name }));
   } else {
     const url = `${(provider === 'custom' ? base : p.base).replace(/\/+$/, '')}/models`;
     const j = await jsonOf(await fetch(url, { headers: { Authorization: `Bearer ${key}` } }));
-    ids = (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean);
-    if (provider === 'openai') ids = ids.filter((id) => /^(gpt-|o\d|chatgpt)/.test(id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(id));
-    if (provider === 'mistral') ids = ids.filter((id) => !/(embed|moderation|ocr|voxtral)/.test(id));
+    items = (j.data || j.models || []).map((m) => ({ id: m.id || m.name, name: m.name && m.name !== m.id ? m.name : '', pricing: m.pricing })).filter((m) => m.id);
+    if (provider === 'openai') items = items.filter((m) => /^(gpt-|o\d|chatgpt)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding|instruct)/.test(m.id));
+    if (provider === 'mistral') items = items.filter((m) => !/(embed|moderation|ocr|voxtral|transcribe)/.test(m.id));
   }
-  const preferred = p.models.filter((m) => ids.includes(m));
-  return { ids: [...new Set([...preferred, ...ids.sort()])], best: preferred[0] || (provider === 'gemini' ? p.model : ids[0]) || p.model };
+  const seen = new Set();
+  let models = items.filter((m) => !seen.has(m.id) && seen.add(m.id))
+    .map((m) => ({ id: m.id, name: m.name || '', price: priceOf(provider, m.id, m.pricing, base) }));
+  // order: preferred first, then free, then priced (cheapest first), then unknown
+  const cost = (m) => (m.price?.free ? -1 : m.price?.label ? parseFloat(m.price.label.replace(/[^\d.]+/, '')) || 0 : 1e9);
+  const rank = (m) => (p.models.includes(m.id) ? p.models.indexOf(m.id) : 100);
+  models.sort((x, y) => rank(x) - rank(y) || cost(x) - cost(y) || x.id.localeCompare(y.id));
+  if (provider === 'openrouter' && !seen.has('openrouter/auto')) models.unshift({ id: 'openrouter/auto', name: 'Auto', price: priceOf('openrouter', 'openrouter/auto') });
+  const ids = models.map((m) => m.id);
+  return { models, ids, best: p.models.find((m) => ids.includes(m)) || (provider === 'gemini' ? p.model : ids[0]) || p.model };
+}
+
+/** Models shown before the account's own list is loaded (no key yet). */
+export function catalog(provider) {
+  return PROVIDERS[provider].models.map((id) => ({ id, name: '', price: priceOf(provider, id) }));
 }
 
 // ---------------------------------------------------------------- lesson summaries

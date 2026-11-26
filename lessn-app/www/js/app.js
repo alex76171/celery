@@ -9,7 +9,7 @@ import {
   refresh, loadWeek, loadHomework, loadExams, scheduleNative, iservClient, loadIServ, weekKey,
 } from './data.js';
 import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone, allExams } from './views.js';
-import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, loadAiModels } from './onboarding.js';
+import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, aiModelPicked, openPricePage, loadAiModels } from './onboarding.js';
 import {
   viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
   openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
@@ -384,6 +384,7 @@ function onClick(e) {
     // recorder
     case 'ai-getkey': openKeyPage(); break;
     case 'ai-load-models': loadAiModels(); break;
+    case 'ai-prices': openPricePage(); break;
     case 'rec-start': recStart(); break;
     case 'rec-stop': recStop(); break;
     case 'open-summary': closeSheet(true); openSummary(d.id); break;
@@ -473,6 +474,7 @@ function boot() {
       case 'mail-folder': IS.setFolder(v); break;
       case 'browse-kind': openBrowse.setKind(v); break;
       case 'ai-provider': setAiProvider(v); break;
+      case 'form': if (key === 'setup-model') aiModelPicked(v); break;
       default:
     }
   };
