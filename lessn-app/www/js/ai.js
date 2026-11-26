@@ -109,7 +109,20 @@ export function aiConfig(provider = S.settings.aiProvider || 'gemini') {
   const base = provider === 'custom' ? String(S.settings.aiBaseUrl || '').replace(/\/+$/, '') : p.base;
   return { provider, p, key: store.aiKey(provider), model, base };
 }
-export const aiReady = () => { const c = aiConfig(); return !!c.key && !!c.model && (c.provider !== 'custom' || !!c.base); };
+const usable = (c) => !!c.key && !!c.model && (c.provider !== 'custom' || !!c.base);
+/** Every provider the user linked (saved a key for), default first. */
+export function linkedAIs() {
+  const def = S.settings.aiProvider || 'gemini';
+  return Object.keys(PROVIDERS).map((id) => aiConfig(id)).filter(usable).sort((a, b) => (b.provider === def) - (a.provider === def));
+}
+export const aiReady = () => linkedAIs().length > 0;
+/** Provider for a feature ('chat' | 'plan' | 'summary' | 'files'): its own choice, else the default, else any linked one. */
+export function aiFor(feature, override) {
+  const list = linkedAIs();
+  const want = override || (feature && S.settings[`ai_${feature}`]) || S.settings.aiProvider || 'gemini';
+  return list.find((c) => c.provider === want) || list.find((c) => c.provider === (S.settings.aiProvider || 'gemini')) || list[0] || aiConfig();
+}
+export const aiLabel = (c) => `${c.p.name.replace(/ \(.*\)$/, '')} · ${c.model}`;
 
 const ERR = (m) => new Error(m);
 async function jsonOf(res) {
@@ -200,12 +213,37 @@ async function callOpenAICompatible(c, { messages, system, json }) {
 }
 
 /** Sends a conversation and returns the answer text. messages: [{ role: 'user'|'model', text, images: [{ mime, data }] }] */
-export async function complete({ messages, system, json = false, temperature = 0.5, config = aiConfig() }) {
+export async function complete(opts) {
+  return (await completeEx(opts)).text;
+}
+
+async function callOnce(config, { messages, system, json, temperature }) {
   if (!config.key) throw ERR('Add an AI key first.');
   const call = config.provider === 'gemini' ? callGemini : config.provider === 'anthropic' ? callClaude : callOpenAICompatible;
   const text = await call(config, { messages, system, json, temperature });
   if (!text) throw ERR('The AI did not answer. Try again.');
   return text;
+}
+
+/**
+ * Like complete(), but also says which AI answered: { text, provider, model, name, fellBack }.
+ * Without an explicit config it uses the AI chosen for `feature`, and if that one fails (no credit, limit reached,
+ * server down) it automatically asks the next linked AI, unless the user turned the backup off.
+ */
+export async function completeEx({ messages, system, json = false, temperature = 0.5, config, feature, provider }) {
+  const first = config || aiFor(feature, provider);
+  const order = [first, ...(config || S.settings.aiFallback === false ? [] : linkedAIs().filter((c) => c.provider !== first.provider))];
+  let lastErr;
+  for (const c of order) {
+    try {
+      const text = await callOnce(c, { messages, system, json, temperature });
+      return { text, provider: c.provider, model: c.model, name: aiLabel(c), fellBack: c !== first, error: c !== first ? lastErr?.message : '' };
+    } catch (e) {
+      lastErr = e;
+      if (/refus/i.test(e.message)) break; // a declined request should not be retried elsewhere
+    }
+  }
+  throw lastErr || ERR('Add an AI key first.');
 }
 
 function parseJson(text) {
@@ -215,8 +253,8 @@ function parseJson(text) {
   return JSON.parse(a >= 0 && b > a ? s.slice(a, b + 1) : s);
 }
 
-export function chat({ messages, system }) {
-  return complete({ messages, system, temperature: 0.6 });
+export function chat({ messages, system, provider }) {
+  return completeEx({ messages, system, temperature: 0.6, feature: 'chat', provider });
 }
 
 // ---------------------------------------------------------------- model lists
@@ -306,7 +344,7 @@ async function transcribe(c, base64, mime) {
 
 /** Picks a provider that can handle audio: the current one if it can, otherwise any other provider with a saved key. */
 function audioConfig() {
-  const cur = aiConfig();
+  const cur = aiFor('summary');
   if (cur.key && cur.p.audio && (cur.provider !== 'custom' || cur.base)) return cur;
   for (const id of ['gemini', 'openai', 'mistral']) { const c = aiConfig(id); if (c.key) return c; }
   return null;
@@ -322,8 +360,8 @@ export async function summarizeAudio({ base64, mime = 'audio/mp4', lang = 'de', 
   } else {
     const transcript = await transcribe(ac, base64, mime);
     // The summary itself uses the provider you chose (it may differ from the one that transcribed)
-    const cur = aiConfig();
-    text = await complete({ config: cur.key ? cur : ac, json: true, temperature: 0.2, messages: [{ role: 'user', text: lessonPrompt(lang, context, transcript) }] });
+    const cur = aiFor('summary');
+    text = await complete({ config: usable(cur) ? cur : ac, json: true, temperature: 0.2, messages: [{ role: 'user', text: lessonPrompt(lang, context, transcript) }] });
   }
   let out;
   try { out = parseJson(text); } catch { out = { title: '', summary: text }; }
@@ -339,10 +377,47 @@ ${summaries.length ? `Here are summaries of recent lessons in this subject. Base
 Spread the work from today until the day before the exam, 20–45 minutes per day, with a review day at the end. Skip days only if there are more than 10 days.
 Answer in ${LANG_NAME[lang] || 'German'}. Return ONLY JSON:
 {"plan":[{"date":"YYYY-MM-DD","title":"short focus of the day","tasks":["concrete task"],"minutes":30}],"tips":["short tip"]}`;
-  const text = await complete({ messages: [{ role: 'user', text: prompt }], json: true, temperature: 0.4 });
+  const text = await complete({ messages: [{ role: 'user', text: prompt }], json: true, temperature: 0.4, feature: 'plan' });
   const out = parseJson(text);
   if (!Array.isArray(out.plan)) throw ERR('The AI did not return a plan. Try again.');
   return { plan: out.plan, tips: Array.isArray(out.tips) ? out.tips : [] };
 }
 
 export const DEFAULT_MODEL = PROVIDERS.gemini.model;
+
+// ---------------------------------------------------------------- quick helpers used across the app
+const ask = (feature, prompt, extra = {}) => complete({ feature, temperature: 0.4, messages: [{ role: 'user', text: prompt, images: extra.images }], system: extra.system });
+const langName = () => LANG_NAME[S.settings.lang] || 'German';
+
+/** Explains / summarizes a file the student opened (pages or photos as images, or plain text). */
+export function fileHelp({ mode, name, text, images }) {
+  const what = {
+    summary: 'Summarize this document for a school student: a short overview, then the most important points as a list.',
+    explain: 'Explain this document simply, step by step, as a patient tutor. Point out the key terms.',
+    quiz: 'Make 6 quiz questions with short answers (answers at the end) so the student can check if they understood this document.',
+    cards: 'Make 10 flashcards (front – back) with the most important facts, definitions and formulas from this document.',
+    tasks: 'Find every task or exercise in this document and explain how to approach each one (hints, not full solutions).',
+  }[mode] || mode;
+  return ask('files', `${what}\nFile name: ${name}.\nAnswer in ${langName()}. Use simple Markdown.${text ? `\n\nCONTENT:\n${text.slice(0, 60000)}` : ''}`, { images });
+}
+
+/** Summary of an e-mail plus the things the student has to do. */
+export function mailHelp({ mode, subject, from, body, note }) {
+  if (mode === 'reply') return ask('chat', `Write a short, polite reply e-mail in ${langName()} from a school student to this e-mail. ${note ? `The reply should say: ${note}.` : ''} Return only the reply text, no subject line.\n\nFROM: ${from}\nSUBJECT: ${subject}\n\n${body.slice(0, 20000)}`);
+  return ask('chat', `Summarize this e-mail for a school student in 2-4 sentences in ${langName()}. Then list any tasks, deadlines or dates as bullet points (or say there are none).\n\nFROM: ${from}\nSUBJECT: ${subject}\n\n${body.slice(0, 20000)}`);
+}
+
+/** Summary of a chat, a reply suggestion, or a translation of a message. */
+export function chatHelp({ mode, lines, note, text }) {
+  if (mode === 'translate') return ask('chat', `Translate this message into ${langName()} (if it is already in ${langName()}, translate it into English). Return only the translation.\n\n${text}`);
+  if (mode === 'reply') return ask('chat', `You help a school student answer in a school messenger. Suggest ONE short, friendly reply in the language of the chat${note ? ` that says: ${note}` : ''}. Return only the reply text.\n\nCHAT (oldest first):\n${lines.slice(-30).join('\n')}`);
+  return ask('chat', `Summarize this school chat in ${langName()}: what was discussed, decisions, dates, and anything the student has to do. Use short bullet points.\n\nCHAT (oldest first):\n${lines.slice(-120).join('\n')}`);
+}
+
+/** Turns a photo or text into homework entries: [{ subject, text, due: 'YYYY-MM-DD' }] */
+export async function extractHomework({ text, images, subjects, today }) {
+  const out = await complete({ feature: 'chat', json: true, temperature: 0.2, messages: [{ role: 'user', images, text: `Find homework or tasks in this ${images?.length ? 'photo' : 'text'} and return ONLY JSON: {"items":[{"subject":"one of: ${subjects.join(', ')} (or empty)","text":"the task","due":"YYYY-MM-DD or empty"}]}. Today is ${today}. Write the tasks in ${langName()}.${text ? `\n\n${text}` : ''}` }] });
+  const j = parseJson(out);
+  return Array.isArray(j.items) ? j.items.filter((x) => x && x.text) : [];
+}
+

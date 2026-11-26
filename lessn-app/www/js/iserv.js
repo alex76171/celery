@@ -278,24 +278,115 @@ export class IServ {
   }
 
   // ---------------------------------------------------------------- messenger (Matrix)
-  get mx() { return `${this.base}/_matrix/client/v3`; }
+  get hs() { return this.matrix?.hs || this.base; }
+  get mx() { return `${this.hs}/_matrix/client/v3`; }
 
+  /**
+   * Signs in to the IServ messenger (Matrix). Tries, in order:
+   * a saved session, IServ's own token endpoint, single sign-on through the IServ session, and a password login.
+   * Every attempt is recorded in this.mxLog so the app can explain what went wrong.
+   */
   async matrixLogin() {
     if (this.matrix) return this.matrix;
+    if (!this.mxPromise) this.mxPromise = this.doMatrixLogin().finally(() => { this.mxPromise = null; });
+    return this.mxPromise;
+  }
+
+  async doMatrixLogin() {
+    this.mxLog = [];
+    const log = (step, ok, info = '') => this.mxLog.push({ step, ok, info: String(info).slice(0, 160) });
+    const key = `lessn:mx:${this.host}:${this.username}`;
+    // 0) saved session from last time (avoids a new "device" on every start)
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (saved?.token) {
+        const r = await this.http(`${saved.hs}/_matrix/client/v3/account/whoami`, { headers: { Authorization: `Bearer ${saved.token}` } });
+        if (r.ok) { this.matrix = saved; log('saved session', true); return saved; }
+        log('saved session', false, `HTTP ${r.status}`);
+      }
+    } catch (e) { log('saved session', false, e.message); }
+    const save = (m) => { this.matrix = m; try { localStorage.setItem(key, JSON.stringify(m)); } catch { /* full */ } return m; };
+    // 1) where is the Matrix server? (.well-known, else IServ itself)
+    let hs = this.base;
+    try {
+      const r = await this.http('/.well-known/matrix/client', { headers: { Accept: 'application/json' } });
+      const j = await r.json();
+      if (j?.['m.homeserver']?.base_url) hs = j['m.homeserver'].base_url.replace(/\/+$/, '');
+      log('server discovery', true, hs);
+    } catch (e) { log('server discovery', false, 'no .well-known, using IServ'); }
     if (!this.loggedIn) await this.login();
-    await this.http('/iserv/messenger/');
-    const res = await this.http('/iserv/messenger/authenticate', { method: 'POST', headers: { Accept: '*/*' } });
-    let j = {};
-    try { j = await res.json(); } catch { /* handled below */ }
-    if (!j.access_token) throw err('IServ messenger is not available for your account.', 'messenger');
-    this.matrix = { token: j.access_token, userId: j.user_id };
-    return this.matrix;
+    // 2) IServ's token endpoint (what the IServ web messenger uses)
+    for (const [method, path] of [['POST', '/iserv/messenger/authenticate'], ['GET', '/iserv/messenger/authenticate'], ['GET', '/iserv/messenger/api/token'], ['POST', '/iserv/messenger/api/authenticate']]) {
+      try {
+        if (path === '/iserv/messenger/authenticate' && method === 'POST') await this.http('/iserv/messenger/').catch(() => {});
+        const r = await this.http(path, { method, headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        const txt = await r.text();
+        let j = {};
+        try { j = JSON.parse(txt); } catch { /* not JSON */ }
+        const token = j.access_token || j.accessToken || j.token || j.data?.access_token;
+        if (token) {
+          const base = (j.home_server_url || j.homeserver || j.homeserver_url || j.base_url || j.well_known?.['m.homeserver']?.base_url || hs).replace(/\/+$/, '');
+          log(`${method} ${path}`, true);
+          return save({ token, userId: j.user_id || j.userId || j.mxid, hs: /^https?:/.test(base) ? base : `https://${base}`, deviceId: j.device_id || '' });
+        }
+        if (j.login_token || j.loginToken) {
+          const m = await this.matrixTokenLogin(hs, j.login_token || j.loginToken);
+          log(`${method} ${path} + login token`, true);
+          return save(m);
+        }
+        log(`${method} ${path}`, false, `HTTP ${r.status}`);
+      } catch (e) { log(`${method} ${path}`, false, e.message); }
+    }
+    // 3) Matrix login flows of the server
+    let flows = [];
+    try {
+      const r = await this.http(`${hs}/_matrix/client/v3/login`, { headers: { Accept: 'application/json' } });
+      flows = ((await r.json()).flows || []).map((f) => f.type);
+      log('login flows', true, flows.join(', '));
+    } catch (e) { log('login flows', false, e.message); }
+    // 3a) single sign-on through the IServ session (no password typed again)
+    if (hasNative() && (flows.includes('m.login.sso') || flows.includes('m.login.cas') || !flows.length)) {
+      try {
+        const back = 'https://lessn.invalid/sso';
+        const r = await native.followRedirects({ url: `${hs}/_matrix/client/v3/login/sso/redirect?redirectUrl=${encodeURIComponent(back)}`, stopAt: 'loginToken=' });
+        const tok = (String(r.url).match(/[?&]loginToken=([^&#]+)/) || [])[1];
+        if (tok) { const m = await this.matrixTokenLogin(hs, decodeURIComponent(tok)); log('single sign-on', true); return save(m); }
+        log('single sign-on', false, `stopped at ${String(r.url).replace(/\?.*/, '')} (HTTP ${r.status})`);
+      } catch (e) { log('single sign-on', false, e.message); }
+    }
+    // 3b) password login with the IServ account
+    if (flows.includes('m.login.password') || !flows.length) {
+      for (const user of [this.username, `@${this.username}:${new URL(hs).hostname}`, `@${this.username}:${this.host}`]) {
+        try {
+          const r = await this.http(`${hs}/_matrix/client/v3/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'm.login.password', identifier: { type: 'm.id.user', user }, password: this.password, initial_device_display_name: 'Lessn (Android)' }) });
+          const j = await r.json().catch(() => ({}));
+          if (j.access_token) { log('password login', true); return save({ token: j.access_token, userId: j.user_id, hs: (j.well_known?.['m.homeserver']?.base_url || hs).replace(/\/+$/, ''), deviceId: j.device_id }); }
+          log('password login', false, j.error || `HTTP ${r.status}`);
+          if (r.status !== 403 && r.status !== 400) break;
+        } catch (e) { log('password login', false, e.message); break; }
+      }
+    }
+    const e = err('Lessn could not sign in to the IServ messenger.', 'messenger');
+    e.details = this.mxLog;
+    throw e;
+  }
+
+  async matrixTokenLogin(hs, loginToken) {
+    const r = await this.http(`${hs}/_matrix/client/v3/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'm.login.token', token: loginToken, initial_device_display_name: 'Lessn (Android)' }) });
+    const j = await r.json().catch(() => ({}));
+    if (!j.access_token) throw err(j.error || `Matrix login failed (HTTP ${r.status})`, r.status);
+    return { token: j.access_token, userId: j.user_id, hs: (j.well_known?.['m.homeserver']?.base_url || hs).replace(/\/+$/, ''), deviceId: j.device_id };
+  }
+
+  forgetMatrix() {
+    this.matrix = null;
+    try { localStorage.removeItem(`lessn:mx:${this.host}:${this.username}`); } catch { /* ignore */ }
   }
 
   async mxFetch(path, opts = {}, retry = true) {
     const m = await this.matrixLogin();
     const res = await this.http(this.mx + path, { ...opts, headers: { Authorization: `Bearer ${m.token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
-    if (res.status === 401 && retry) { this.matrix = null; this.loggedIn = false; return this.mxFetch(path, opts, false); }
+    if (res.status === 401 && retry) { this.forgetMatrix(); return this.mxFetch(path, opts, false); }
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw err(j.error || `Messenger error ${res.status}`, res.status);
     return j;
@@ -308,7 +399,13 @@ export class IServ {
     this.since = j.next_batch;
     const direct = new Set();
     for (const ev of j.account_data?.events || []) if (ev.type === 'm.direct') Object.values(ev.content || {}).flat().forEach((id) => direct.add(id));
-    const me = this.matrix.userId;
+    const me = this.matrix.userId || j.account_data?.user_id;
+    this.invites = Object.entries(j.rooms?.invite || {}).map(([id, r]) => {
+      const ev = r.invite_state?.events || [];
+      const inviter = ev.find((e) => e.type === 'm.room.member' && e.state_key === me)?.sender;
+      const nameOf = (u) => ev.find((e) => e.type === 'm.room.member' && e.state_key === u)?.content?.displayname || shortId(u);
+      return { id, name: ev.find((e) => e.type === 'm.room.name')?.content?.name || (inviter ? nameOf(inviter) : 'Chat'), from: inviter ? nameOf(inviter) : '' };
+    });
     return Object.entries(j.rooms?.join || {}).map(([id, r]) => {
       const state = [...(r.state?.events || []), ...(r.timeline?.events || [])];
       const names = {};
@@ -318,7 +415,7 @@ export class IServ {
         const hero = (r.summary?.['m.heroes'] || []).find((h) => h !== me);
         name = names[hero] || Object.entries(names).find(([k]) => k !== me)?.[1] || hero || 'Chat';
       }
-      const last = (r.timeline?.events || []).filter((e) => e.type === 'm.room.message' || e.type === 'm.room.encrypted').pop();
+      const last = (r.timeline?.events || []).filter((e) => (e.type === 'm.room.message' && e.content?.['m.relates_to']?.rel_type !== 'm.replace') || e.type === 'm.room.encrypted').pop();
       return {
         id, name, direct: direct.has(id), encrypted: state.some((e) => e.type === 'm.room.encryption'),
         unread: r.unread_notifications?.notification_count || 0,
@@ -335,7 +432,7 @@ export class IServ {
     const names = {};
     (j.state || []).forEach((e) => { if (e.type === 'm.room.member' && e.content?.displayname) names[e.state_key] = e.content.displayname; });
     const me = this.matrix.userId;
-    const msgs = (j.chunk || []).filter((e) => e.type === 'm.room.message' || e.type === 'm.room.encrypted').map((e) => toMsg(e, names, me)).sort((x, y) => x.ts - y.ts);
+    const msgs = applyEdits((j.chunk || []).filter((e) => e.type === 'm.room.message' || e.type === 'm.room.encrypted')).map((e) => toMsg(e, names, me)).sort((x, y) => x.ts - y.ts);
     return { messages: msgs, end: j.end, names };
   }
 
@@ -350,11 +447,13 @@ export class IServ {
     for (const [id, r] of Object.entries(j.rooms?.join || {})) {
       const names = {};
       (r.state?.events || []).forEach((e) => { if (e.type === 'm.room.member' && e.content?.displayname) names[e.state_key] = e.content.displayname; });
-      const msgs = (r.timeline?.events || []).map((e) => toMsg(e, names, me));
+      const msgs = applyEdits(r.timeline?.events || []).map((e) => toMsg(e, names, me));
       if (msgs.length) out[id] = msgs;
     }
     return out;
   }
+
+  join(roomId) { return this.mxFetch(`/rooms/${encodeURIComponent(roomId)}/join`, { method: 'POST', body: '{}' }); }
 
   async send(roomId, body) {
     const txn = `lessn${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
@@ -366,7 +465,7 @@ export class IServ {
     if (this.hasV1 !== undefined) return this.hasV1;
     try {
       const m = await this.matrixLogin();
-      const r = await native.raw({ url: `${this.base}/_matrix/client/v1/media/config`, headers: { Authorization: `Bearer ${m.token}` } });
+      const r = await native.raw({ url: `${this.hs}/_matrix/client/v1/media/config`, headers: { Authorization: `Bearer ${m.token}` } });
       this.hasV1 = r.status === 200;
     } catch { this.hasV1 = false; }
     return this.hasV1;
@@ -375,7 +474,7 @@ export class IServ {
   async mediaUrl(mxc, kind = 'download', name = '') {
     const [server, id] = String(mxc).replace(/^mxc:\/\//, '').split('/');
     const v1 = await this.mediaV1();
-    const base = v1 ? `${this.base}/_matrix/client/v1/media` : `${this.base}/_matrix/media/v3`;
+    const base = v1 ? `${this.hs}/_matrix/client/v1/media` : `${this.hs}/_matrix/media/v3`;
     if (kind === 'thumbnail') return `${base}/thumbnail/${server}/${id}?width=720&height=720&method=scale`;
     return `${base}/download/${server}/${id}${name ? `/${encodeURIComponent(name)}` : ''}`;
   }
@@ -396,7 +495,7 @@ export class IServ {
   async upload({ base64, path, mime, name }) {
     const m = await this.matrixLogin();
     const r = await native.raw({
-      url: `${this.base}/_matrix/media/v3/upload?filename=${encodeURIComponent(name)}`, method: 'POST',
+      url: `${this.hs}/_matrix/media/v3/upload?filename=${encodeURIComponent(name)}`, method: 'POST',
       headers: { Authorization: `Bearer ${m.token}`, 'Content-Type': mime || 'application/octet-stream' },
       ...(path ? { bodyPath: path } : { bodyBase64: base64 }),
     });
@@ -509,8 +608,20 @@ function parseIServDate(v) {
 }
 
 const shortId = (id) => String(id || '').replace(/^@/, '').split(':')[0];
+/** Edits replace the original message's text; the edit events themselves are hidden. */
+function applyEdits(events) {
+  const edits = {};
+  for (const e of events) {
+    const rel = e.content?.['m.relates_to'];
+    if (rel?.rel_type === 'm.replace' && rel.event_id && e.content['m.new_content']) edits[rel.event_id] = e.content['m.new_content'];
+  }
+  return events.filter((e) => e.content?.['m.relates_to']?.rel_type !== 'm.replace').map((e) => (edits[e.event_id] ? { ...e, content: { ...e.content, ...edits[e.event_id] }, edited: true } : e));
+}
+/** Removes the quoted "> <@user> ..." fallback of replies. */
+const stripReply = (body) => String(body || '').replace(/^(> .*\n?)+\n?/, '');
 function messageText(e) {
   const c = e.content || {};
+  if (c['m.relates_to']?.['m.in_reply_to'] && c.msgtype === 'm.text') return stripReply(c.body);
   const kind = { 'm.image': '[Photo]', 'm.file': `[File] ${c.body || ''}`, 'm.video': '[Video]', 'm.audio': '[Audio]' }[c.msgtype];
   return kind || c.body || '';
 }
@@ -522,5 +633,6 @@ function toMsg(e, names, me) {
     body: enc ? '' : messageText(e), file: e.content?.msgtype === 'm.file' ? e.content.body : '',
     mxc: e.content?.url || '', info: e.content?.info || {}, filename: e.content?.filename || e.content?.body || '',
     redacted: !!e.unsigned?.redacted_because || (e.type === 'm.room.message' && !e.content?.msgtype),
+    edited: !!e.edited, notice: e.content?.msgtype === 'm.notice' || e.content?.msgtype === 'm.emote',
   };
 }

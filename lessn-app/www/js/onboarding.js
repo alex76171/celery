@@ -1,6 +1,6 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
-import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect } from './core.js';
-import { PROVIDERS, listModels, catalog, priceOf, complete } from './ai.js';
+import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd, formSelect, toggle, stagger, openMenu } from './core.js';
+import { PROVIDERS, listModels, catalog, priceOf, complete, linkedAIs, aiFor } from './ai.js';
 import { native, hasNative } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
 import { render } from './app.js';
@@ -50,7 +50,7 @@ export async function detectIServ(school) {
 }
 
 // ---------------------------------------------------------------- AI setup sheet
-const AIS = { provider: 'gemini', models: null, loading: false, error: '', testing: false, picked: '' };
+const AIS = { provider: 'gemini', models: null, loading: false, error: '', testing: false, picked: '', mode: '' };
 
 function aiForm() {
   const p = PROVIDERS[AIS.provider];
@@ -125,8 +125,10 @@ function keepAi(fn) {
   if (v.m && $('#setup-model')?.type !== 'hidden') $('#setup-model').value = v.m;
 }
 
-export function openAISetup(next) {
-  Object.assign(AIS, { provider: S.settings.aiProvider || 'gemini', models: null, loading: false, error: '', testing: false, picked: '' });
+export function openAISetup(next, { add = false, provider = '' } = {}) {
+  const linked = new Set(linkedAIs().map((c) => c.provider));
+  const first = add ? Object.keys(PROVIDERS).find((id) => !linked.has(id)) || 'custom' : provider || S.settings.aiProvider || 'gemini';
+  Object.assign(AIS, { provider: first, models: null, loading: false, error: '', testing: false, picked: '', mode: add ? 'add' : provider ? 'edit' : '' });
   openSheet(aiForm, { full: true, onClose: () => { const n = next; next = null; n?.(); } });
   if (store.aiKey(AIS.provider)) loadAiModels(true);
 }
@@ -173,11 +175,13 @@ export async function saveAISetup() {
   }
   AIS.testing = false;
   store.setAiKey(key, prov);
-  S.settings.aiProvider = prov;
+  const defLinked = linkedAIs().some((c) => c.provider === S.settings.aiProvider && c.provider !== prov);
+  if (!AIS.mode || !defLinked) S.settings.aiProvider = prov;
   S.settings.aiModels = { ...(S.settings.aiModels || {}), [prov]: config.model };
   if (prov === 'custom') S.settings.aiBaseUrl = base;
   store.saveSettings(S.settings);
   toast(t('AI connected: {name}', { name: PROVIDERS[prov].name }));
+  if (S.view === 'ai-settings') S.anim = 'fade';
   closeSheet();
   render();
 }
@@ -252,4 +256,51 @@ export function maybeRunSetup() {
   S.settings.onboarded = true;
   store.saveSettings(S.settings);
   setTimeout(() => openAISetup(() => setTimeout(() => { if (!store.iserv()) openIServSetup(); }, 350)), 900);
+}
+
+// ---------------------------------------------------------------- "AI helpers" screen: every linked AI
+const shortName = (c) => c.p.name.replace(/ \(.*\)$/, '');
+export function viewAISettings() {
+  const list = linkedAIs();
+  const def = aiFor('');
+  const opts = [['', `${t('Default')} (${list.length ? shortName(def) : '–'})`], ...list.map((c) => [c.provider, shortName(c)])];
+  const audioOpts = [['', t('Automatic')], ...list.filter((c) => c.p.audio).map((c) => [c.provider, shortName(c)])];
+  return `<div class="pad">
+    <p class="hint lead"${stagger(0)}>${esc(t('Link as many AIs as you like. Pick one as default, choose which AI does what, and switch between them in every chat.'))}</p>
+    <div class="section-title">${esc(t('Linked AIs'))}</div>
+    <div class="card"${stagger(1)}>${list.length ? list.map((c) => {
+      const pr = priceOf(c.provider, c.model, null, c.base);
+      const tag = priceTag(pr);
+      return `<button class="row ai-row" data-act="ai-row" data-p="${c.provider}"><span class="row-ic tint ai-ic">${icon('sparkles')}</span>
+        <span class="row-text"><b>${esc(shortName(c))}${c.provider === def.provider ? ` <em class="pi-tag tier">${esc(t('Default'))}</em>` : ''}</b><small>${esc(c.model)}${pr?.label ? ` · ${esc(pr.label)}` : ''}</small></span>
+        ${tag ? `<em class="pi-tag ${tag.cls || ''}">${esc(tag.text)}</em>` : ''}${icon('ellipsis-vertical', 'row-chev')}</button>`;
+    }).join('') : `<div class="row"><span class="row-text"><b>${esc(t('No AI linked yet'))}</b><small>${esc(t('Gemini has a free tier. Get a key in a minute.'))}</small></span></div>`}
+      <button class="row" data-act="ai-link"><span class="row-ic">${icon('plus')}</span><span class="row-text"><b>${esc(list.length ? t('Link another AI') : t('Link an AI'))}</b></span>${icon('chevron-right', 'row-chev')}</button>
+    </div>
+    ${list.length ? `<div class="section-title">${esc(t('Which AI does what'))}</div>
+    <div class="card"${stagger(2)}>
+      ${dd(t('Chats & homework help'), 'ai_chat', opts, S.settings.ai_chat || '', { ic: 'message-square' })}
+      ${dd(t('Study plans'), 'ai_plan', opts, S.settings.ai_plan || '', { ic: 'graduation-cap' })}
+      ${dd(t('Files & documents'), 'ai_files', opts, S.settings.ai_files || '', { ic: 'file-text' })}
+      ${dd(t('Lesson summaries'), 'ai_summary', audioOpts, S.settings.ai_summary || '', { ic: 'mic' })}
+    </div>
+    <div class="card"${stagger(3)}>${toggle('aiFallback', t('Backup AI'), t('If an AI fails (limit reached, no credit), ask the next linked AI automatically'))}</div>` : ''}
+  </div>`;
+}
+export function aiRowMenu(anchor, provider) {
+  const c = linkedAIs().find((x) => x.provider === provider);
+  if (!c) return;
+  const isDef = aiFor('').provider === provider;
+  openMenu(anchor, [['edit', t('Change model or key')], ...(isDef ? [] : [['default', t('Make default')]]), ['unlink', t('Unlink')]], '', (v) => {
+    if (v === 'edit') openAISetup(null, { provider });
+    if (v === 'default') { S.settings.aiProvider = provider; store.saveSettings(S.settings); render(); }
+    if (v === 'unlink') import('./core.js').then(({ uiConfirm }) => uiConfirm(t('Unlink {name}?', { name: shortName(c) }), { danger: true, ok: t('Unlink') })).then((ok) => { if (ok) unlinkAI(provider); });
+  }, shortName(c));
+}
+export function unlinkAI(provider) {
+  store.setAiKey('', provider);
+  for (const f of ['ai_chat', 'ai_plan', 'ai_files', 'ai_summary']) if (S.settings[f] === provider) S.settings[f] = '';
+  if (S.settings.aiProvider === provider) S.settings.aiProvider = linkedAIs()[0]?.provider || 'gemini';
+  store.saveSettings(S.settings);
+  render();
 }

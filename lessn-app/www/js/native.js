@@ -31,5 +31,12 @@ export const native = {
   iservLogin: (opts) => call('iservLogin', opts),
   iservBackground: (opts) => call('setIServBackground', opts).catch(() => {}),
   download: (opts) => (hasNative() ? call('download', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
+  fetchFile: (opts) => call('fetchFile', opts),
+  followRedirects: (opts) => call('followRedirects', opts),
+  openFile: (path, mime, title) => call('openFile', { path, mime, title }),
+  shareFile: (opts) => call('shareFile', opts),
+  saveFile: (path, name) => call('saveFile', { path, name }),
+  pdfPage: (path, page, width) => call('pdfPage', { path, page, width }),
+  writeCache: (name, base64) => call('writeCache', { name, base64 }),
   openIServ: (opts) => (hasNative() ? call('openIServ', opts) : Promise.resolve(window.open(opts.url, '_blank'))),
 };

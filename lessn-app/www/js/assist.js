@@ -4,7 +4,9 @@ import {
   S, t, $, esc, icon, fmt, relDay, inDays, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, rerenderSheet,
   toast, colorFor, subjLabel, formSelect, formDate, uiConfirm, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
 } from './core.js';
-import { chat as aiChat, studyPlan as aiPlan, LANG_NAME, aiReady } from './ai.js';
+import { chat as aiChat, studyPlan as aiPlan, LANG_NAME, aiReady, linkedAIs, aiFor, aiLabel, PROVIDERS, extractHomework } from './ai.js';
+import { native, hasNative } from './native.js';
+import { openMenu } from './core.js';
 import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
 import { render, setView } from './app.js';
 
@@ -49,6 +51,8 @@ export function openHomeworkForm(prefill = {}) {
   const next = prefill.subject ? nextLessonOf(prefill.subject, prefill.date || toUntisDate(new Date())) : null;
   const tomorrow = next || addDays(new Date(), 1);
   openSheet(() => `<h2 class="sheet-title">${icon('square-pen')}${esc(t('Add homework'))}</h2>
+    ${aiReady() && !prefill.text ? `<button class="ai-cta" data-act="hw-scan"><span class="ai-orb">${icon('camera')}</span><span><b>${esc(t('Scan with AI'))}</b><small>${esc(t('Photo of the board, worksheet or planner'))}</small></span>${icon('chevron-right', 'row-chev')}</button>
+    <input type="file" id="hw-scan" accept="image/*" capture="environment" hidden>` : ''}
     <div class="form">
       <label class="lbl">${esc(t('Subject'))}</label>
       ${formSelect('h-subj', [['', t('No subject')], ...subs.map(([k, long]) => [k, subjLabel(k) || long])], prefill.subject || '')}
@@ -59,6 +63,37 @@ export function openHomeworkForm(prefill = {}) {
       <button class="btn" data-act="hw-save">${esc(t('Save'))}</button>
     </div>`);
 }
+/** Photo -> homework entries found by the AI, which the student confirms. */
+let found = [];
+export async function scanHomework(files) {
+  const f = files?.[0];
+  if (!f) return;
+  found = null;
+  const build = () => `<h2 class="sheet-title">${icon('sparkles')}${esc(t('Scan with AI'))}</h2>
+    ${found === null ? `<div class="fv-loading">${icon('refresh-cw', 'spin-ic')}<span>${esc(t('Reading the photo…'))}</span></div>`
+    : !found.length ? `<p class="hint">${esc(t('No homework found on this photo.'))}</p>`
+      : `<div class="card">${found.map((h, i) => `<label class="row hw-found"><input type="checkbox" data-found="${i}" checked><span class="row-text"><b>${esc(h.text)}</b><small>${esc([subjLabel(h.subject) || h.subject, h.due ? fmt(new Date(h.due), { weekday: 'short', day: 'numeric', month: 'short' }) : ''].filter(Boolean).join(' · '))}</small></span></label>`).join('')}</div>
+        <button class="btn" data-act="hw-found-save">${esc(t('Add {n} homework', { n: found.length }))}</button>`}`;
+  openSheet(build);
+  try {
+    const data = await shrink(f, 1600, 0.85);
+    const subs = subjectsKnown().map(([k]) => k);
+    found = await extractHomework({ images: [{ mime: 'image/jpeg', data: data.split(',')[1] }], subjects: subs, today: new Date().toISOString().slice(0, 10) });
+  } catch (e) { found = []; toast(t(e.message), 'err'); }
+  const b = $('.sheet-body'); if (b) b.innerHTML = build();
+}
+export function saveFound() {
+  const pick = [...document.querySelectorAll('[data-found]')].filter((x) => x.checked).map((x) => found[Number(x.dataset.found)]);
+  const now = toUntisDate(new Date());
+  const add = pick.map((h, i) => {
+    const due = Number(String(h.due || '').replace(/-/g, '')) || toUntisDate(nextLessonOf(h.subject, now) || addDays(new Date(), 1));
+    return { id: `h${Date.now()}${i}`, subject: subjectsKnown().some(([k]) => k === h.subject) ? h.subject : '', text: h.text, due, date: now };
+  });
+  setMyHomework([...myHomework(), ...add]);
+  closeSheet(); render();
+  toast(t('{n} homework added', { n: add.length }));
+}
+
 export function saveHomework() {
   const text = $('#h-text').value.trim();
   if (!text) { toast(t('Write what you have to do'), 'err'); return; }
@@ -109,9 +144,9 @@ function subjectsKnown() {
 
 // ================================================================ AI chat
 const chats = () => read('chats', []);
-const saveChats = (list) => write('chats', list.slice(0, 40).map((c) => ({ ...c, messages: c.messages.map((m) => ({ ...m, images: (m.images || []).map((i) => ({ thumb: i.thumb })) })) })));
+const saveChats = (list) => write('chats', list.slice(0, 40).map((c) => ({ ...c, messages: c.messages.map((m) => ({ ...m, docs: (m.docs || []).map((d) => ({ name: d.name })), images: (m.images || []).map((i) => ({ thumb: i.thumb })) })) })));
 const live = {}; // chat id -> messages incl. full image data for this session
-let pending = []; // images attached in the composer
+let pending = []; // images attached in the composer: { mime, data, thumb } or documents: { doc: true, name, text?, pages? }
 let current = null;
 
 /** Recent AI lesson summaries for a subject, newest first. */
@@ -184,10 +219,13 @@ function suggestions() {
   return out.slice(0, 4);
 }
 
-const composer = (placeholder) => `<div class="composer-dock">
+const composer = (placeholder, c) => `<div class="composer-dock">
+  ${aiReady() && linkedAIs().length > 1 ? `<button class="ai-switch" data-act="ai-switch">${icon('sparkles')}<span>${esc(aiLabel(aiFor('chat', c?.ai)))}</span>${icon('chevron-down')}</button>` : ''}
   <div class="attach-row" id="attach-row">${pendingHtml()}</div>
   <form class="composer gem" id="ai-composer">
-    <label class="attach" aria-label="${esc(t('Add a photo'))}">${icon('plus')}<input type="file" id="ai-file" accept="image/*" multiple hidden></label>
+    <button type="button" class="attach" data-act="ai-attach" aria-label="${esc(t('Attach'))}">${icon('plus')}</button>
+    <input type="file" id="ai-file" accept="image/*" multiple hidden><input type="file" id="ai-cam" accept="image/*" capture="environment" hidden>
+    <input type="file" id="ai-doc" accept=".pdf,.txt,.md,.csv,.json,.html,.xml,.tex,.py,.js,.java,.c,.cpp,application/pdf,text/*" multiple hidden>
     <textarea id="ai-input" rows="1" placeholder="${esc(placeholder)}" enterkeyhint="send"></textarea>
     <button class="send" aria-label="${esc(t('Send'))}">${icon('arrow-up')}</button>
   </form>
@@ -208,14 +246,15 @@ export function viewAI() {
     <div class="ai-sugs">${suggestions().map((x, i) => `<button class="ai-sug" data-act="${x.act}" ${x.data} style="--i:${i}"><b>${esc(x.title)}</b><small>${esc(x.sub)}</small><span class="ai-sug-ic">${icon(x.ic)}</span></button>`).join('')}</div>
     ${list.length ? `<div class="section-title">${esc(t('Recent'))}</div><div class="ai-recent">${list.map((c) => `<button class="ai-rec" data-act="ai-open" data-id="${c.id}">${icon(c.kind === 'exam' ? 'graduation-cap' : c.kind === 'homework' ? 'clipboard-list' : 'message-square')}<span>${esc(c.title)}</span></button>`).join('')}</div>` : ''}
     <div class="grow"></div>
-    ${composer(t('Ask the AI…'))}
+    ${composer(t('Ask the AI…'), { ai: homeAI })}
   </div>`;
 }
+let homeAI = '';
 
 export function openChat(id) { current = id; pending = []; setView('ai-chat', 'left'); }
 export const chatTitle = () => chats().find((c) => c.id === current)?.title || t('AI helper');
 
-function md(s) {
+export function md(s) {
   return esc(s)
     .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
@@ -233,9 +272,11 @@ function md(s) {
 function chatMessages(c) {
   const msgs = live[c.id] || c.messages;
   const intro = c.context ? `<div class="ai-context">${icon('info')}<span>${esc(t('The AI knows about this task and your recent lessons.'))}</span></div>` : '';
-  return intro + msgs.map((m) => (m.role === 'user'
-    ? `<div class="gm-user">${(m.images || []).filter((i) => i.thumb).map((i) => `<img class="msg-img" src="${i.thumb}" alt="">`).join('')}${m.text ? `<div class="gm-ubub">${esc(m.text)}</div>` : ''}</div>`
-    : `<div class="gm-ai"><span class="gm-spark">${icon('sparkles')}</span><div class="gm-text">${md(m.text)}</div></div>`)).join('')
+  const many = linkedAIs().length > 1;
+  return intro + msgs.map((m, i) => (m.role === 'user'
+    ? `<div class="gm-user">${(m.images || []).filter((x) => x.thumb).map((x) => `<img class="msg-img" src="${x.thumb}" alt="">`).join('')}${(m.docs || []).map((d) => `<span class="msg-doc">${icon('file-text')}${esc(d.name)}</span>`).join('')}${m.text ? `<div class="gm-ubub">${esc(m.text)}</div>` : ''}</div>`
+    : `<div class="gm-ai ${m.alt ? 'alt' : ''}"><span class="gm-spark">${icon('sparkles')}</span><div class="gm-text">${m.by && (many || m.alt) ? `<small class="gm-by">${esc(m.by)}</small>` : ''}${md(m.text)}${m.note ? `<small class="gm-note">${icon('info')}${esc(m.note)}</small>` : ''}
+      <div class="gm-acts"><button data-act="ai-copy" data-i="${i}" aria-label="${esc(t('Copy'))}">${icon('copy')}</button>${many ? `<button data-act="ai-retry" data-i="${i}">${icon('refresh-cw')}<span>${esc(t('Ask another AI'))}</span></button>` : ''}</div></div></div>`)).join('')
     + (S.aiThinking === c.id ? `<div class="gm-ai thinking"><span class="gm-spark spin">${icon('sparkles')}</span><div class="gm-text"><span class="shimmer">${esc(t('Thinking…'))}</span><i class="gm-line"></i><i class="gm-line short"></i></div></div>` : '');
 }
 
@@ -250,10 +291,87 @@ export function viewAIChat() {
   return `<div class="chat-wrap">
     <div class="chat gem-chat"><div id="msgs" class="msgs">${chatMessages(c)}</div>
     ${empty && !S.aiThinking ? `<div class="starters">${starters.map((x) => `<button class="chip" data-act="ai-starter" data-text="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}</div>
-    ${composer(t('Ask the AI…'))}
+    ${composer(t('Ask the AI…'), c)}
   </div>`;
 }
-const pendingHtml = () => pending.map((p, i) => `<span class="att-prev"><img src="${p.thumb}" alt=""><button data-act="ai-unattach" data-i="${i}">${icon('x')}</button></span>`).join('');
+const pendingHtml = () => pending.map((p, i) => `<span class="att-prev ${p.doc ? 'doc' : ''}">${p.doc ? `${icon('file-text')}<small>${esc(p.name)}</small>` : `<img src="${p.thumb}" alt="">`}<button data-act="ai-unattach" data-i="${i}">${icon('x')}</button></span>`).join('');
+
+/** "+" in the AI composer: photos, camera, documents. */
+export function openAiAttach() {
+  openSheet(() => `<div class="attach-grid">
+    <button data-act="pick" data-input="ai-file"><span style="--c:#8e4ec6">${icon('image')}</span>${esc(t('Photos'))}</button>
+    <button data-act="pick" data-input="ai-cam"><span style="--c:#e5484d">${icon('camera')}</span>${esc(t('Camera'))}</button>
+    <button data-act="pick" data-input="ai-doc"><span style="--c:#0090ff">${icon('file-text')}</span>${esc(t('Document'))}</button>
+    <button data-act="ai-attach-iserv"><span style="--c:#12a594">${icon('folders')}</span>${esc(t('IServ files'))}</button>
+  </div>`);
+}
+
+/** Switch the AI for this chat (all linked AIs). */
+export function switchAI(anchor) {
+  const c = chats().find((x) => x.id === current);
+  const cur = aiFor('chat', S.view === 'ai-chat' ? c?.ai : homeAI).provider;
+  openMenu(anchor, linkedAIs().map((x) => [x.provider, x.p.name.replace(/ \(.*\)$/, ''), x.model]), cur, (v) => {
+    if (S.view === 'ai-chat' && c) { c.ai = v; saveChats([c, ...chats().filter((x) => x.id !== c.id)]); } else homeAI = v;
+    const lbl = $('.ai-switch span'); if (lbl) lbl.textContent = aiLabel(aiFor('chat', v));
+  }, t('Answer with'));
+}
+
+/** Ask the same question again with another linked AI (answers stay side by side). */
+export function retryWith(anchor, idx) {
+  const c = chats().find((x) => x.id === current);
+  if (!c) return;
+  const others = linkedAIs();
+  openMenu(anchor, others.map((x) => [x.provider, x.p.name.replace(/ \(.*\)$/, ''), x.model]), '', async (v) => {
+    const msgs = live[c.id] || (live[c.id] = c.messages.map((m) => ({ ...m })));
+    const upto = msgs.slice(0, Number(idx)).filter((m) => !m.alt).map((m) => (m.docText ? { ...m, text: m.text + m.docText } : m));
+    S.aiThinking = c.id; repaint(c);
+    try {
+      const r = await aiChat({ messages: upto, system: systemPrompt(c.context), provider: v });
+      msgs.splice(Number(idx) + 1, 0, { role: 'model', text: r.text, by: r.name, alt: true });
+    } catch (e) { toast(t(e.message), 'err'); }
+    S.aiThinking = null;
+    c.messages = msgs; saveChats([c, ...chats().filter((x) => x.id !== c.id)]);
+    repaint(c);
+  }, t('Ask another AI'));
+}
+export function copyAnswer(idx) {
+  const c = chats().find((x) => x.id === current);
+  const m = (live[c?.id] || c?.messages || [])[Number(idx)];
+  if (m) navigator.clipboard?.writeText(m.text).then(() => toast(t('Copied')), () => {});
+}
+
+/** Reads documents for the AI: PDFs become page images (native), text files are read as text. */
+export async function attachDocs(files) {
+  for (const f of [...files].slice(0, 3)) {
+    try {
+      if (/pdf/i.test(f.type) || /\.pdf$/i.test(f.name)) {
+        if (!hasNative()) { toast(t('PDFs can only be read in the Android app'), 'err'); continue; }
+        const data = await fileToB64(f);
+        const tmp = await native.writeCache(f.name, data);
+        pending.push({ doc: true, name: f.name, pages: await pdfImages(tmp.path, 6) });
+      } else {
+        const text = await f.text();
+        pending.push({ doc: true, name: f.name, text: text.slice(0, 60000) });
+      }
+    } catch { toast(t('Could not read {name}', { name: f.name }), 'err'); }
+  }
+  $('#attach-row').innerHTML = pendingHtml();
+}
+/** Adds an already-downloaded file (e.g. from IServ) to the next AI message. */
+export async function attachPath({ path, name, mime }) {
+  if (typeof arguments[0].text === 'string') { pending.push({ doc: true, name, text: arguments[0].text.slice(0, 60000) }); return; }
+  if (/pdf/.test(mime)) pending.push({ doc: true, name, pages: await pdfImages(path, 6) });
+  else if (/^image\//.test(mime)) { const r = await native.readFile(path); pending.push({ mime, data: r.data, thumb: `data:${mime};base64,${r.data}` }); }
+  else { const r = await native.readFile(path); pending.push({ doc: true, name, text: new TextDecoder().decode(Uint8Array.from(atob(r.data), (ch) => ch.charCodeAt(0))).slice(0, 60000) }); }
+}
+export async function pdfImages(path, max) {
+  const out = [];
+  const first = await native.pdfPage(path, 0, 1100);
+  out.push({ mime: 'image/jpeg', data: first.data });
+  for (let i = 1; i < Math.min(first.pages, max); i++) out.push({ mime: 'image/jpeg', data: (await native.pdfPage(path, i, 1100)).data });
+  return out;
+}
+const fileToB64 = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
 export function unattach(i) { pending.splice(i, 1); $('#attach-row').innerHTML = pendingHtml(); }
 
 /** Shrinks a photo so it uploads fast: max 1600 px, JPEG. */
@@ -289,19 +407,22 @@ export async function sendAI(textOverride) {
   const text = (textOverride ?? input?.value ?? '').trim();
   if (!text && !pending.length) return;
   if (!aiReady()) { toast(t('Add an AI key first.'), 'err'); return; }
-  if (S.view === 'ai') newChat({ keepPending: true });
+  if (S.view === 'ai') { newChat({ keepPending: true }); const nc = chats()[0]; if (homeAI && nc) { nc.ai = homeAI; saveChats([nc, ...chats().slice(1)]); } }
   const list = chats();
   const c = list.find((x) => x.id === current);
   if (!c) return;
   const msgs = live[c.id] || (live[c.id] = c.messages.map((m) => ({ ...m })));
-  msgs.push({ role: 'user', text: text || t('Please look at this picture.'), images: pending });
+  const docs = pending.filter((p) => p.doc);
+  const imgs = pending.filter((p) => !p.doc);
+  const docText = docs.filter((d) => d.text).map((d) => `\n\n[${d.name}]\n${d.text}`).join('');
+  msgs.push({ role: 'user', text: (text || (docs.length ? t('Please look at this document.') : t('Please look at this picture.'))), images: [...imgs, ...docs.flatMap((d) => d.pages || [])], docs: docs.map((d) => ({ name: d.name })), docText });
   pending = [];
   if (input) { input.value = ''; input.style.height = ''; }
   S.aiThinking = c.id;
   repaint(c);
   try {
-    const answer = await aiChat({ messages: msgs, system: systemPrompt(c.context) });
-    msgs.push({ role: 'model', text: answer });
+    const r = await aiChat({ messages: msgs.filter((m) => !m.alt).map((m) => (m.docText ? { ...m, text: m.text + m.docText } : m)), system: systemPrompt(c.context), provider: c.ai || (S.view === 'ai-chat' ? '' : homeAI) });
+    msgs.push({ role: 'model', text: r.text, by: r.name, note: r.fellBack ? t('{name} answered because the other AI failed.', { name: r.name.split(' · ')[0] }) : '' });
   } catch (e) {
     msgs.push({ role: 'model', text: `⚠ ${t(e.message)}` });
   }

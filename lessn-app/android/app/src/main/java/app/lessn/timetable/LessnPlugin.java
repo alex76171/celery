@@ -191,7 +191,7 @@ public class LessnPlugin extends Plugin {
     public void readFileBase64(PluginCall call) {
         new Thread(() -> {
             try {
-                File f = safeFile(call.getString("path"));
+                File f = safeAnyFile(call.getString("path"));
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 try (FileInputStream in = new FileInputStream(f)) {
                     byte[] buf = new byte[64 * 1024];
@@ -236,8 +236,9 @@ public class LessnPlugin extends Plugin {
             if (!host.equals(Scheduler.prefs(ctx).getString("is_host", ""))) e.putBoolean("is_init", false).putLong("is_chat_ts", 0);
             e.putString("is_host", host).putString("is_user", call.getString("username")).putString("is_pass", call.getString("password"));
             e.putBoolean("is_chats", Boolean.TRUE.equals(call.getBoolean("chats", true)));
+            if (call.getString("mxToken") != null) e.putString("mx_token", call.getString("mxToken")).putString("mx_user", call.getString("mxUser", "")).putString("mx_hs", call.getString("mxHs", ""));
         } else {
-            e.remove("is_pass");
+            e.remove("is_pass").remove("mx_token");
         }
         e.apply();
         androidx.work.WorkManager wm = androidx.work.WorkManager.getInstance(ctx);
@@ -469,6 +470,252 @@ public class LessnPlugin extends Plugin {
             r.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name);
             ((android.app.DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(r);
             call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------ open files (cache + viewer apps)
+    /** Downloads a URL into the app cache (keeps auth headers / IServ cookies) so it can be previewed or opened. */
+    @PluginMethod
+    public void fetchFile(PluginCall call) {
+        new Thread(() -> {
+            try {
+                String url = call.getString("url");
+                String name = call.getString("name", "file").replaceAll("[\\\\/:*?\"<>|]", "_");
+                if (name.isEmpty()) name = "file";
+                java.net.HttpURLConnection c = null;
+                int hops = 0;
+                String target = url;
+                int code;
+                while (true) {
+                    c = (java.net.HttpURLConnection) new java.net.URL(target).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(180000);
+                    JSObject headers = call.getObject("headers", new JSObject());
+                    java.util.Iterator<String> keys = headers.keys();
+                    while (keys.hasNext()) { String k = keys.next(); c.setRequestProperty(k, headers.getString(k)); }
+                    if (Boolean.TRUE.equals(call.getBoolean("cookies", false))) {
+                        String ck = android.webkit.CookieManager.getInstance().getCookie(target);
+                        if (ck != null) c.setRequestProperty("Cookie", ck);
+                    }
+                    code = c.getResponseCode();
+                    if (code >= 300 && code < 400 && hops++ < 6 && c.getHeaderField("Location") != null) {
+                        target = new java.net.URL(new java.net.URL(target), c.getHeaderField("Location")).toString();
+                        c.disconnect();
+                        continue;
+                    }
+                    break;
+                }
+                if (code >= 400) { JSObject r = new JSObject(); r.put("status", code); call.resolve(r); return; }
+                String disp = c.getHeaderField("Content-Disposition");
+                if (disp != null && call.getString("name") == null) {
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("filename\\*?=(?:UTF-8'')?\"?([^\";]+)").matcher(disp);
+                    if (m.find()) name = java.net.URLDecoder.decode(m.group(1), "UTF-8").replaceAll("[\\\\/:*?\"<>|]", "_");
+                }
+                File dir = new File(getContext().getCacheDir(), "open/" + System.currentTimeMillis());
+                dir.mkdirs();
+                File out = new File(dir, name);
+                long size = 0;
+                try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream o = new java.io.FileOutputStream(out)) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) { o.write(buf, 0, n); size += n; if (size > 300_000_000L) throw new Exception("File too big"); }
+                }
+                String type = c.getContentType();
+                JSObject r = new JSObject();
+                r.put("status", code);
+                r.put("path", out.getAbsolutePath());
+                r.put("name", name);
+                r.put("size", size);
+                r.put("mime", guessMime(name, type));
+                r.put("contentType", type);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Download failed" : e.getMessage());
+            }
+        }).start();
+    }
+
+    private static String guessMime(String name, String type) {
+        String ext = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : "";
+        String m = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+        if (m != null) return m;
+        if (type != null && !type.startsWith("application/octet-stream")) return type.split(";")[0].trim();
+        return "application/octet-stream";
+    }
+
+    /**
+     * Follows redirects with the shared cookie jar (IServ session) and stops at the first URL that contains `stopAt`
+     * (used for Matrix single sign-on: .../login/sso/redirect -> IServ -> ...?loginToken=...).
+     */
+    @PluginMethod
+    public void followRedirects(PluginCall call) {
+        new Thread(() -> {
+            try {
+                String url = call.getString("url");
+                String stopAt = call.getString("stopAt", "loginToken=");
+                android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+                JSONArray chain = new JSONArray();
+                String body = "";
+                int code = 0;
+                for (int i = 0; i < 15; i++) {
+                    chain.put(url);
+                    if (url.contains(stopAt)) break;
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(30000);
+                    c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) Lessn");
+                    String ck = cm.getCookie(url);
+                    if (ck != null) c.setRequestProperty("Cookie", ck);
+                    code = c.getResponseCode();
+                    java.util.List<String> sc = c.getHeaderFields().get("Set-Cookie");
+                    if (sc != null) for (String v : sc) cm.setCookie(url, v);
+                    String loc = c.getHeaderField("Location");
+                    if (code >= 300 && code < 400 && loc != null) {
+                        url = new java.net.URL(new java.net.URL(url), loc).toString();
+                        c.disconnect();
+                        continue;
+                    }
+                    java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                    body = in == null ? "" : new String(readStream(in), java.nio.charset.StandardCharsets.UTF_8);
+                    // HTML pages that continue by themselves (meta refresh, auto-submitting consent forms are not followed)
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("http-equiv=[\"']?refresh[\"']?[^>]*url=([^\"'>]+)", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(body);
+                    if (m.find()) { url = new java.net.URL(new java.net.URL(url), m.group(1).replace("&amp;", "&")).toString(); continue; }
+                    java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("(https?://[^\"'<>\\s]*" + java.util.regex.Pattern.quote(stopAt) + "[^\"'<>\\s]*)").matcher(body);
+                    if (m2.find()) { url = m2.group(1).replace("&amp;", "&"); chain.put(url); }
+                    break;
+                }
+                cm.flush();
+                JSObject r = new JSObject();
+                r.put("url", url);
+                r.put("status", code);
+                r.put("chain", chain);
+                r.put("body", body.length() > 20000 ? body.substring(0, 20000) : body);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Request failed" : e.getMessage());
+            }
+        }).start();
+    }
+
+    /** Opens a cached file in another app (PDF viewer, Office, gallery…). */
+    @PluginMethod
+    public void openFile(PluginCall call) {
+        try {
+            File f = safeAnyFile(call.getString("path"));
+            String mime = call.getString("mime", guessMime(f.getName(), null));
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+            Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(i, call.getString("title", f.getName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (i.resolveActivity(getContext().getPackageManager()) == null) {
+                // no viewer for this exact type: let the user choose from apps that open any file
+                i.setDataAndType(uri, "*/*");
+            }
+            getContext().startActivity(chooser);
+            call.resolve();
+        } catch (android.content.ActivityNotFoundException e) {
+            call.reject("No app can open this file", "noapp");
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** Share sheet for a cached file. */
+    @PluginMethod
+    public void shareFile(PluginCall call) {
+        try {
+            Intent i = new Intent(Intent.ACTION_SEND);
+            if (call.getString("path") != null) {
+                File f = safeAnyFile(call.getString("path"));
+                Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+                i.setType(call.getString("mime", guessMime(f.getName(), null))).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } else {
+                i.setType("text/plain");
+            }
+            if (call.getString("text") != null) i.putExtra(Intent.EXTRA_TEXT, call.getString("text"));
+            getContext().startActivity(Intent.createChooser(i, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /** Copies a cached file into Downloads. */
+    @PluginMethod
+    public void saveFile(PluginCall call) {
+        new Thread(() -> {
+            try {
+                File f = safeAnyFile(call.getString("path"));
+                String name = call.getString("name", f.getName());
+                String mime = guessMime(name, null);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    android.content.ContentValues v = new android.content.ContentValues();
+                    v.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name);
+                    v.put(android.provider.MediaStore.Downloads.MIME_TYPE, mime);
+                    Uri uri = getContext().getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    try (java.io.OutputStream o = getContext().getContentResolver().openOutputStream(uri); FileInputStream in = new FileInputStream(f)) {
+                        byte[] buf = new byte[65536]; int n; while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                    }
+                } else {
+                    File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                    dir.mkdirs();
+                    try (java.io.FileOutputStream o = new java.io.FileOutputStream(new File(dir, name)); FileInputStream in = new FileInputStream(f)) {
+                        byte[] buf = new byte[65536]; int n; while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                    }
+                }
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage());
+            }
+        }).start();
+    }
+
+    /** Renders one PDF page to a PNG (in-app PDF viewer). */
+    @PluginMethod
+    public void pdfPage(PluginCall call) {
+        new Thread(() -> {
+            try (android.os.ParcelFileDescriptor fd = android.os.ParcelFileDescriptor.open(safeAnyFile(call.getString("path")), android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+                 android.graphics.pdf.PdfRenderer pdf = new android.graphics.pdf.PdfRenderer(fd)) {
+                int count = pdf.getPageCount();
+                int idx = Math.max(0, Math.min(count - 1, call.getInt("page", 0)));
+                int width = Math.min(2000, call.getInt("width", 1200));
+                try (android.graphics.pdf.PdfRenderer.Page page = pdf.openPage(idx)) {
+                    int height = Math.round((float) width * page.getHeight() / page.getWidth());
+                    android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+                    bmp.eraseColor(android.graphics.Color.WHITE);
+                    page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out);
+                    bmp.recycle();
+                    JSObject r = new JSObject();
+                    r.put("pages", count);
+                    r.put("width", width);
+                    r.put("height", height);
+                    r.put("data", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
+                    call.resolve(r);
+                }
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "Cannot read PDF" : e.getMessage());
+            }
+        }).start();
+    }
+
+    /** Writes base64 data into the cache (e.g. AI answers saved as files, captured photos). */
+    @PluginMethod
+    public void writeCache(PluginCall call) {
+        try {
+            String name = call.getString("name", "file").replaceAll("[\\\\/:*?\"<>|]", "_");
+            File dir = new File(getContext().getCacheDir(), "open/" + System.currentTimeMillis());
+            dir.mkdirs();
+            File out = new File(dir, name);
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(out)) { o.write(Base64.decode(call.getString("base64", ""), Base64.DEFAULT)); }
+            JSObject r = new JSObject();
+            r.put("path", out.getAbsolutePath());
+            r.put("mime", guessMime(name, null));
+            call.resolve(r);
         } catch (Exception e) {
             call.reject(e.getMessage());
         }

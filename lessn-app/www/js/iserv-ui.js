@@ -5,6 +5,10 @@ import {
 } from './core.js';
 import { native } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
+import { openViewer } from './viewer.js';
+import { photosToPdf, scanPhoto, bytesToB64 } from './docs.js';
+import { chatHelp, mailHelp, aiReady } from './ai.js';
+import { md, attachPath } from './assist.js';
 import { render, setView } from './app.js';
 
 // ---------------------------------------------------------------- state
@@ -26,7 +30,7 @@ export function client() {
 async function task(key, fn) {
   I.error[key] = null;
   S.loading++;
-  try { await fn(); } catch (e) { console.warn(e); I.error[key] = e.message || String(e); if (e.code === 'network') S.offline = true; }
+  try { await fn(); } catch (e) { console.warn(e); I.error[key] = e.message || String(e); I.details = { ...(I.details || {}), [key]: e.details || null }; if (e.code === 'network') S.offline = true; }
   finally { S.loading--; render(); }
 }
 
@@ -155,7 +159,7 @@ export async function openTask(id) {
       ${x.due ? `<p>${esc(t('Due'))} ${esc(relDay(new Date(Math.floor(x.due / 10000), Math.floor(x.due / 100) % 100 - 1, x.due % 100)))}</p>` : ''}</div>
     ${error ? `<div class="notice warn">${icon('circle-alert')}<span>${esc(t(error))}</span></div>` : !det ? skeleton(3) : `
       ${det.text ? `<div class="card"><p class="sum-text">${esc(det.text)}</p></div>` : ''}
-      ${det.files.length ? `<div class="section-title">${icon('paperclip')}${esc(t('Attachments'))}</div><div class="card">${det.files.map((f) => `<button class="row" data-act="iserv-open" data-url="${esc(f.href)}"><span class="row-ic">${icon('file')}</span><span class="row-text"><b>${esc(f.name)}</b></span>${icon('external-link', 'row-chev')}</button>`).join('')}</div>` : ''}`}
+      ${det.files.length ? `<div class="section-title">${icon('paperclip')}${esc(t('Attachments'))}</div><div class="card">${det.files.map((f) => `<button class="row" data-act="task-file" data-url="${esc(f.href)}" data-name="${esc(f.name)}"><span class="row-ic">${icon('file')}</span><span class="row-text"><b>${esc(f.name)}</b></span>${icon('chevron-right', 'row-chev')}</button>`).join('')}</div>` : ''}`}
     <button class="ai-cta" data-act="ai-homework" data-key="${esc(x.id)}"><span class="ai-orb">${icon('sparkles')}</span><span><b>${esc(t('Get help from AI'))}</b><small>${esc(t('Ask questions or send a photo of the task'))}</small></span>${icon('chevron-right', 'row-chev')}</button>
     <button class="btn" data-act="iserv-open" data-url="${esc(x.url)}">${icon('upload')}${esc(t('Hand in on IServ'))}</button>`;
   openSheet(build, { full: true });
@@ -178,19 +182,36 @@ export function loadRooms() {
   if (!c) return Promise.resolve();
   return task('rooms', async () => {
     I.rooms = await c.rooms();
+    I.invites = c.invites || [];
+    // let the background checker use the same messenger session
+    const acc = store.iserv();
+    if (S.settings.iservNotify && acc && c.matrix && c.matrix.token !== I.sharedToken) {
+      I.sharedToken = c.matrix.token;
+      native.iservBackground({ enabled: true, host: acc.host, username: acc.username, password: acc.password, chats: true, mxToken: c.matrix.token, mxUser: c.matrix.userId || '', mxHs: c.matrix.hs });
+    }
     store.setCache('is-rooms', I.rooms.map((r) => ({ ...r })));
     startPolling();
   });
 }
 
+/** Messenger could not start: explain, offer the IServ web messenger (themed) and show what was tried. */
+function messengerError() {
+  const log = I.details?.rooms || [];
+  return `<div class="empty-hero">${icon('message-square')}<h3>${esc(t('Messenger not reachable'))}</h3><p>${esc(t(I.error.rooms))}</p></div>
+    <button class="btn wide" data-act="iserv-open" data-path="messenger">${icon('external-link')}${esc(t('Open the IServ messenger'))}</button>
+    <button class="btn small ghost center-btn" data-act="is-rooms-retry">${icon('refresh-cw')}${esc(t('Try again'))}</button>
+    ${log.length ? `<details class="mx-log"><summary>${esc(t('Details'))}</summary>${log.map((l) => `<div class="${l.ok ? 'ok' : ''}">${icon(l.ok ? 'circle-check' : 'circle-x')}<span><b>${esc(l.step)}</b>${l.info ? ` · ${esc(l.info)}` : ''}</span></div>`).join('')}</details>` : ''}`;
+}
+
 let roomQuery = '';
 export function viewChats() {
-  if (!I.rooms) { if (!I.error.rooms && !S.loading) loadRooms(); return `<div class="pad">${errBox('rooms', 'is-rooms-retry') || skeleton(6)}</div>`; }
+  if (!I.rooms) { if (!I.error.rooms && !S.loading) loadRooms(); return `<div class="pad">${I.error.rooms ? messengerError() : skeleton(6)}</div>`; }
   const list = I.rooms.filter((r) => !roomQuery || r.name.toLowerCase().includes(roomQuery.toLowerCase()));
   return `<div class="pad">
     <label class="search">${icon('search')}<input id="room-q" placeholder="${esc(t('Search chats'))}" value="${esc(roomQuery)}" autocomplete="off"></label>
     <button class="fab" data-act="new-chat" aria-label="${esc(t('New chat'))}">${icon('square-pen')}</button>
     ${errBox('rooms')}
+    ${(I.invites || []).length ? `<div class="section-title">${esc(t('Invitations'))}</div><div class="card">${I.invites.map((r) => `<div class="chat-row">${avatar(r.name, 'group')}<span class="chat-row-text"><b>${esc(r.name)}</b><span class="chat-row-bottom"><span>${esc(r.from ? t('Invited by {name}', { name: r.from }) : t('Invitation'))}</span></span></span><button class="btn small" data-act="room-join" data-id="${esc(r.id)}">${esc(t('Join'))}</button></div>`).join('')}</div>` : ''}
     ${list.length ? `<div class="card chat-list">${list.map(roomRow).join('')}</div>` : emptyState('message-square', t('No chats'))}
   </div>`;
 }
@@ -256,11 +277,11 @@ function messagesHtml(list) {
       : m.encrypted ? `<i class="enc">${icon('lock')}${esc(t('Encrypted message. Open it on the IServ website.'))}</i>`
         : m.kind === 'm.image' ? `<button class="m-img" data-act="img-view" data-mxc="${esc(m.mxc || m.localSrc || '')}" style="aspect-ratio:${m.info?.w && m.info?.h ? `${m.info.w}/${m.info.h}` : '4/3'}">${m.localSrc ? `<img src="${m.localSrc}" alt="">` : mediaCache[m.mxc] ? `<img src="${mediaCache[m.mxc]}" alt="">` : `<span class="m-load">${icon('image')}</span>`}</button>`
           : m.kind === 'm.audio' ? `<button class="m-voice" data-act="voice-play" data-mxc="${esc(m.mxc)}" data-id="${esc(m.id)}"><span class="vp-ic">${icon(playing.id === m.id && playing.on ? 'pause' : 'play')}</span><span class="vp-bars">${bars(m.id)}</span><span class="vp-t">${fmtDur(m.info?.duration)}</span></button>`
-            : m.kind === 'm.file' || m.kind === 'm.video' ? `<button class="m-file" data-act="msg-file" data-mxc="${esc(m.mxc)}" data-name="${esc(m.filename)}"><span class="file-ic">${icon(fileIcon({ name: m.filename, type: m.info?.mimetype || '' }))}</span><span><b>${esc(m.filename)}</b><small>${esc(sizeText(m.info?.size || 0))}</small></span>${icon('download', 'row-chev')}</button>`
+            : m.kind === 'm.file' || m.kind === 'm.video' ? `<button class="m-file" data-act="msg-open" data-mxc="${esc(m.mxc)}" data-name="${esc(m.filename)}" data-size="${esc(m.info?.size || 0)}"><span class="file-ic">${icon(fileIcon({ name: m.filename, type: m.info?.mimetype || '' }))}</span><span><b>${esc(m.filename)}</b><small>${esc(sizeText(m.info?.size || 0))}</small></span>${icon('chevron-right', 'row-chev')}</button>`
               : esc(m.body).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
     return `${sep}<div class="msg ${m.mine ? 'me' : 'them'} ${tail ? 'tail' : ''} ${m.pending ? 'pending' : ''}" data-msg="${esc(m.id)}">
       ${!m.mine && !I.room.direct ? (tail ? avatar(m.name, 'sm') : '<span class="av-sp"></span>') : ''}
-      <div class="bubble ${media && !m.redacted ? 'has-media' : ''}" ${!m.mine ? `style="--c:${PALETTE[hash(m.name) % PALETTE.length]}"` : ''}>${showName ? `<b class="who">${esc(m.name)}</b>` : ''}<span class="txt">${body}</span><small>${m.pending ? icon('clock', 'mini') : ''}${timeOf(m.ts)}</small></div>
+      <div class="bubble ${media && !m.redacted ? 'has-media' : ''}" ${!m.mine ? `style="--c:${PALETTE[hash(m.name) % PALETTE.length]}"` : ''}>${showName ? `<b class="who">${esc(m.name)}</b>` : ''}<span class="txt">${body}</span><small>${m.edited ? `${esc(t('edited'))} · ` : ''}${m.pending ? icon('clock', 'mini') : ''}${timeOf(m.ts)}</small></div>
     </div>`;
   }).join('');
 }
@@ -327,13 +348,27 @@ export async function playVoice(mxc, id) {
 export function downloadChatFile(mxc, name) {
   client().downloadMedia(mxc, name).then(() => toast(t('Downloading {name}', { name })), (e) => toast(e.message, 'err'));
 }
+/** Opens a messenger attachment in the viewer (authenticated media first, old media API as fallback). */
+export async function openChatFile(mxc, name, size) {
+  const c = client();
+  try {
+    const m = await c.matrixLogin();
+    const [server, id] = String(mxc).replace(/^mxc:\/\//, '').split('/');
+    const auth = { Authorization: `Bearer ${m.token}` };
+    openViewer({ name: name || 'file', size: Number(size) || 0, request: [
+      { url: `${c.hs}/_matrix/client/v1/media/download/${server}/${id}`, headers: auth },
+      { url: `${c.hs}/_matrix/media/v3/download/${server}/${id}`, headers: auth },
+    ] });
+  } catch (e) { toast(t(e.message), 'err'); }
+}
 
 export function viewRoom() {
   if (!I.room) return emptyState('message-square', t('No chat selected'));
   setTimeout(() => paintMessages(true), 0);
   const enc = I.room.encrypted;
   return `<div class="chat-wrap"><div class="chat">
-    ${enc ? `<div class="ai-context">${icon('lock')}<span>${esc(t('This chat is end-to-end encrypted. Lessn can only show and send unencrypted messages; open it on the IServ website to read everything.'))}</span></div>` : ''}
+    ${enc ? `<div class="ai-context">${icon('lock')}<span>${esc(t('This chat is end-to-end encrypted. Lessn can only show and send unencrypted messages; open it on the IServ website to read everything.'))}</span><button class="link" data-act="iserv-open" data-path="messenger">${esc(t('Open'))}</button></div>` : ''}
+    ${aiReady() ? `<button class="chip ai-chip" data-act="chat-ai-sum">${icon('sparkles')}${esc(t('Summarize chat'))}</button>` : ''}
     <div id="msgs" class="msgs">${I.error.room ? errBox('room') : skeleton(4)}</div>
   </div>
   <div class="composer-dock">
@@ -358,6 +393,9 @@ export function openAttachMenu() {
       <button data-act="pick" data-input="chat-photo"><span style="--c:#8e4ec6">${icon('image')}</span>${esc(t('Photos'))}</button>
       <button data-act="pick" data-input="chat-camera"><span style="--c:#e5484d">${icon('camera')}</span>${esc(t('Camera'))}</button>
       <button data-act="pick" data-input="chat-file"><span style="--c:#0090ff">${icon('file')}</span>${esc(t('File'))}</button>
+      <button data-act="scan-start" data-target="chat"><span style="--c:#f76b15">${icon('file-text')}</span>${esc(t('Scan to PDF'))}</button>
+      <button data-act="iserv-pick" data-target="chat"><span style="--c:#12a594">${icon('folders')}</span>${esc(t('IServ files'))}</button>
+      <button data-act="chat-ai-reply"><span style="--c:#6e56cf">${icon('sparkles')}</span>${esc(t('AI reply'))}</button>
     </div>`);
 }
 
@@ -443,6 +481,7 @@ export function messageMenu(id) {
   if (!m || m.pending || m.redacted) return;
   openSheet(() => `<div class="card">
     ${m.body && m.kind === 'm.text' ? `<button class="row" data-act="msg-copy" data-id="${esc(id)}"><span class="row-ic">${icon('copy')}</span><span class="row-text"><b>${esc(t('Copy'))}</b></span></button>` : ''}
+    ${m.body && m.kind === 'm.text' && aiReady() ? `<button class="row" data-act="msg-translate" data-id="${esc(id)}"><span class="row-ic">${icon('globe')}</span><span class="row-text"><b>${esc(t('Translate'))}</b></span></button>` : ''}
     ${m.mxc ? `<button class="row" data-act="msg-file" data-mxc="${esc(m.mxc)}" data-name="${esc(m.filename || 'file')}"><span class="row-ic">${icon('download')}</span><span class="row-text"><b>${esc(t('Save'))}</b></span></button>` : ''}
     ${m.mine ? `<button class="row danger" data-act="msg-delete" data-id="${esc(id)}"><span class="row-ic">${icon('trash-2')}</span><span class="row-text"><b>${esc(t('Delete for everyone'))}</b></span></button>` : ''}
   </div>`);
@@ -484,6 +523,10 @@ export function openNewChat() {
     }, 350);
   };
 }
+export async function joinRoom(id) {
+  try { await client().join(id); I.invites = (I.invites || []).filter((r) => r.id !== id); await loadRooms(); openRoom(id); } catch (e) { toast(t(e.message), 'err'); }
+}
+
 export async function startDirect(userId) {
   closeSheet(true);
   try {
@@ -598,7 +641,8 @@ export async function openMail(i) {
       <h2>${esc(msg.subject || m.subject)}</h2>
       <div class="mail-from">${avatar(msg.from[0]?.name || m.from)}<div><b>${esc(msg.from[0]?.name || m.from)}</b><small>${esc(msg.from[0]?.addr || '')}</small><small>${esc(t('to'))} ${esc(msg.to.join(', '))}${msg.cc.length ? ` · cc ${esc(msg.cc.join(', '))}` : ''}</small></div><small class="mail-date">${esc(when(msg.date))}</small></div>
     </div>
-    ${msg.attachments.length ? `<div class="chips-mini">${msg.attachments.map((a) => `<span>${icon('paperclip')}${esc(a.name)} ${esc(sizeText(a.size))}</span>`).join('')}</div>` : ''}
+    ${msg.attachments.length ? `<div class="chips-mini">${msg.attachments.map((a, k) => `<button data-act="mail-att" data-i="${i}" data-k="${k}">${icon('paperclip')}${esc(a.name)} ${esc(sizeText(a.size))}</button>`).join('')}</div>` : ''}
+    ${aiReady() ? `<div class="mail-ai"><button class="chip ai-chip" data-act="mail-ai" data-mode="summary" data-i="${i}">${icon('sparkles')}${esc(t('Summarize'))}</button><button class="chip ai-chip" data-act="mail-ai" data-mode="reply" data-i="${i}">${icon('reply')}${esc(t('Draft a reply'))}</button></div><div id="mail-ai-out"></div>` : ''}
     <div class="mail-body"><iframe id="mail-frame" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="mail"></iframe></div>
     <div class="mail-actions">
       <button class="btn small ghost" data-act="iserv-open" data-path="mail/compose?replyTo=${encodeURIComponent(m.uid)}&path=${encodeURIComponent(m.folder)}">${icon('reply')}${esc(t('Reply'))}</button>
@@ -608,6 +652,7 @@ export async function openMail(i) {
   openSheet(build, { full: true });
   try {
     msg = await c.message(m.uid, m.folder);
+    m.full = msg;
     if (!m.seen) { m.seen = true; c.markRead(m.uid, m.folder); }
   } catch (e) { error = e.message; }
   const body = $('.sheet-body');
@@ -655,7 +700,7 @@ export function viewFiles() {
     <div class="file-tools">
       <button class="btn small ghost" data-act="file-upload">${icon('upload')}${esc(t('Upload'))}</button>
       <button class="btn small ghost" data-act="file-mkdir">${icon('folder-plus')}${esc(t('New folder'))}</button>
-      <input type="file" id="file-up" multiple hidden>
+      <input type="file" id="file-up" multiple hidden><input type="file" id="file-up-photo" accept="image/*,video/*" multiple hidden><input type="file" id="file-up-cam" accept="image/*" capture="environment" hidden>
     </div>
     ${list.length ? `<div class="card">${list.map((f) => `<div class="file-row">
       <button class="file-main" data-act="${f.isDir ? 'files-go' : 'file-open'}" data-p="${esc(f.isDir && !f.path.endsWith('/') ? `${f.path}/` : f.path)}">
@@ -668,19 +713,19 @@ export function viewFiles() {
 }
 
 const isImageFile = (f) => /\.(png|jpe?g|gif|webp|bmp|heic)$/i.test(f.name) || /^image\//.test(f.type || '');
-export async function openFile(path) {
+export function openFile(path) {
   const f = I.files?.find((x) => x.path === path);
   if (!f) return;
-  if (!isImageFile(f)) { downloadFile(path); return; }
-  openSheet(() => `<div class="img-view">${skeleton(1)}</div><div class="mail-actions"><button class="btn small ghost" data-act="file-dl" data-p="${esc(path)}">${icon('download')}${esc(t('Save'))}</button></div>`, { full: true });
-  try { const src = await client().fileData(path); const box = $('.img-view'); if (box) box.innerHTML = `<img src="${src}" alt="">`; } catch (e) { toast(t(e.message), 'err'); }
+  const c = client();
+  openViewer({ name: f.name, size: f.size, request: { url: c.davUrl(path), headers: { Authorization: c.davAuth } } });
 }
 
 export function fileMenu(path) {
   const f = I.files?.find((x) => x.path === path);
   if (!f) return;
   openSheet(() => `<h2 class="sheet-title">${icon(fileIcon(f))}${esc(f.name)}</h2><div class="card">
-    ${f.isDir ? '' : `<button class="row" data-act="file-dl" data-p="${esc(path)}"><span class="row-ic">${icon('download')}</span><span class="row-text"><b>${esc(t('Download'))}</b></span></button>`}
+    ${f.isDir ? '' : `<button class="row" data-act="file-open" data-p="${esc(path)}"><span class="row-ic">${icon('eye')}</span><span class="row-text"><b>${esc(t('Open'))}</b></span></button>
+    <button class="row" data-act="file-dl" data-p="${esc(path)}"><span class="row-ic">${icon('download')}</span><span class="row-text"><b>${esc(t('Download'))}</b></span></button>`}
     <button class="row" data-act="file-rename" data-p="${esc(path)}"><span class="row-ic">${icon('pencil')}</span><span class="row-text"><b>${esc(t('Rename'))}</b></span></button>
     <button class="row danger" data-act="file-delete" data-p="${esc(path)}"><span class="row-ic">${icon('trash-2')}</span><span class="row-text"><b>${esc(t('Delete'))}</b></span></button>
   </div>`);
@@ -706,10 +751,151 @@ export async function fileMkdir() {
   if (!name || /[\\/]/.test(name)) return;
   try { await client().mkdir(`${I.path.replace(/\/?$/, '/')}${name}/`); reloadFiles(); } catch (e) { toast(t(e.message), 'err'); }
 }
+/** Upload sheet: photos, camera, any file, scan to PDF, text note. */
+export function openUploadMenu() {
+  openSheet(() => `<h2 class="sheet-title">${icon('upload')}${esc(t('Upload to {folder}', { folder: I.path === '/' ? t('Files') : I.path.split('/').filter(Boolean).pop() }))}</h2>
+    <div class="attach-grid">
+      <button data-act="pick" data-input="file-up-photo"><span style="--c:#8e4ec6">${icon('image')}</span>${esc(t('Photos'))}</button>
+      <button data-act="pick" data-input="file-up-cam"><span style="--c:#e5484d">${icon('camera')}</span>${esc(t('Camera'))}</button>
+      <button data-act="pick" data-input="file-up"><span style="--c:#0090ff">${icon('file')}</span>${esc(t('Files'))}</button>
+      <button data-act="scan-start" data-target="files"><span style="--c:#f76b15">${icon('file-text')}</span>${esc(t('Scan to PDF'))}</button>
+      <button data-act="file-note"><span style="--c:#12a594">${icon('sticky-note')}</span>${esc(t('Text note'))}</button>
+    </div>`);
+}
+export async function fileNote() {
+  closeSheet(true);
+  const text = await uiPrompt(t('Text note'), '', { multiline: true, placeholder: t('Write something…') });
+  if (!text) return;
+  let name = await uiPrompt(t('File name'), `${t('Note')} ${new Date().toLocaleDateString()}`.replace(/[\\/:]/g, '-'));
+  if (!name) return;
+  if (!/\.\w{1,5}$/.test(name)) name += '.txt';
+  const bytes = new TextEncoder().encode(text);
+  await uploadBytes(name, bytesToB64(bytes), 'text/plain');
+  reloadFiles();
+}
+async function uploadBytes(name, base64, mime) {
+  toast(t('Uploading {name}', { name }));
+  try { await client().uploadFile(I.path, { name, base64, mime }); toast(t('Uploaded {name}', { name }), 'ok'); } catch (e) { toast(t(e.message), 'err'); }
+}
+
+// ---------------------------------------------------------------- scan to PDF (files, messenger, AI)
+const SCAN = { target: '', pages: [] };
+export function scanStart(target) {
+  closeSheet(true);
+  Object.assign(SCAN, { target, pages: [] });
+  if (!$('#scan-cam')) document.body.insertAdjacentHTML('beforeend', '<input type="file" id="scan-cam" accept="image/*" capture="environment" hidden><input type="file" id="scan-gal" accept="image/*" multiple hidden>');
+  $('#scan-cam').click();
+}
+export async function scanAdd(files) {
+  for (const f of [...files]) { try { SCAN.pages.push(await scanPhoto(f)); } catch { toast(t('Could not read that image'), 'err'); } }
+  if (!SCAN.pages.length) return;
+  openSheet(() => `<h2 class="sheet-title">${icon('file-text')}${esc(t('Scan to PDF'))}</h2>
+    <div class="scan-pages">${SCAN.pages.map((p, i) => `<span><img src="data:image/jpeg;base64,${bytesToB64(p.bytes)}" alt=""><em>${i + 1}</em><button data-act="scan-del" data-i="${i}">${icon('x')}</button></span>`).join('')}</div>
+    <div class="mail-actions"><button class="btn small ghost" data-act="pick" data-input="scan-cam" data-keep="1">${icon('camera')}${esc(t('Add page'))}</button><button class="btn small ghost" data-act="pick" data-input="scan-gal" data-keep="1">${icon('image')}${esc(t('From photos'))}</button></div>
+    <button class="btn wide" data-act="scan-done">${icon('check')}${esc(t('Create PDF ({n} pages)', { n: SCAN.pages.length }))}</button>`);
+}
+export function scanDel(i) { SCAN.pages.splice(Number(i), 1); if (SCAN.pages.length) scanAdd([]); else closeSheet(true); }
+export async function scanDone() {
+  closeSheet(true);
+  let name = await uiPrompt(t('File name'), `Scan ${new Date().toLocaleDateString().replace(/[\\/:.]/g, '-')}`);
+  if (!name) return;
+  if (!/\.pdf$/i.test(name)) name += '.pdf';
+  const pdf = photosToPdf(SCAN.pages);
+  const base64 = bytesToB64(pdf);
+  if (SCAN.target === 'files') { await uploadBytes(name, base64, 'application/pdf'); reloadFiles(); }
+  if (SCAN.target === 'chat') await sendBlob({ name, base64, mime: 'application/pdf', size: pdf.length });
+  if (SCAN.target === 'ai') {
+    const tmp = await native.writeCache(name, base64);
+    await attachPath({ path: tmp.path, name, mime: 'application/pdf' });
+    render();
+  }
+  SCAN.pages = [];
+}
+async function sendBlob({ name, base64, mime, size, path }) {
+  const c = client();
+  const tmp = { id: `tmp${Date.now()}`, mine: true, ts: Date.now(), pending: true, kind: 'm.file', filename: name, info: { size, mimetype: mime }, body: name };
+  I.room.messages = [...I.room.messages, tmp];
+  paintMessages(true);
+  try {
+    const url = await c.upload({ base64, path, mime, name });
+    const isImg = /^image\//.test(mime);
+    const r = await c.sendContent(I.room.id, isImg ? { msgtype: 'm.image', body: name, url, info: { mimetype: mime, size } } : { msgtype: 'm.file', body: name, filename: name, url, info: { mimetype: mime, size } });
+    tmp.id = r.event_id || tmp.id; tmp.pending = false;
+  } catch (e) { I.room.messages = I.room.messages.filter((m) => m !== tmp); toast(t(e.message), 'err'); }
+  paintMessages(false);
+}
+
+// ---------------------------------------------------------------- pick a file from IServ (for chats and the AI)
+const PICK = { target: '', path: '/', list: null, error: '' };
+export function iservPick(target) {
+  if (!client()) { toast(t('Set up IServ first'), 'err'); return; }
+  Object.assign(PICK, { target, path: '/', list: null, error: '' });
+  openSheet(pickHtml, { full: true });
+  pickLoad('/');
+}
+async function pickLoad(path) {
+  PICK.path = path; PICK.list = null; PICK.error = '';
+  repaintPick();
+  try { PICK.list = (await client().files(path)).sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name)); } catch (e) { PICK.error = e.message; }
+  repaintPick();
+}
+function repaintPick() { const b = $('.sheet-body'); if (b && PICK.target) b.innerHTML = pickHtml(); }
+function pickHtml() {
+  const up = PICK.path !== '/' ? `<button class="row" data-act="pick-go" data-p="${esc(PICK.path.replace(/[^/]+\/?$/, ''))}"><span class="row-ic">${icon('chevron-left')}</span><span class="row-text"><b>..</b></span></button>` : '';
+  return `<h2 class="sheet-title">${icon('folders')}${esc(t('Choose a file'))}</h2><p class="hint">${esc(PICK.path)}</p>
+    ${PICK.error ? `<div class="notice warn">${icon('circle-alert')}<span>${esc(t(PICK.error))}</span></div>` : !PICK.list ? skeleton(4)
+    : `<div class="card">${up}${PICK.list.map((f) => `<button class="row" data-act="${f.isDir ? 'pick-go' : 'pick-file'}" data-p="${esc(f.isDir && !f.path.endsWith('/') ? `${f.path}/` : f.path)}"><span class="row-ic">${icon(fileIcon(f))}</span><span class="row-text"><b>${esc(f.name)}</b><small>${esc(f.isDir ? '' : sizeText(f.size))}</small></span></button>`).join('') || emptyState('folder', t('This folder is empty'))}</div>`}`;
+}
+export function pickGo(path) { pickLoad(path); }
+export async function pickFile(path) {
+  const f = PICK.list?.find((x) => x.path === path);
+  if (!f) return;
+  const c = client();
+  closeSheet(true);
+  toast(t('Loading {name}', { name: f.name }));
+  try {
+    const r = await native.fetchFile({ url: c.davUrl(path), headers: { Authorization: c.davAuth }, name: f.name });
+    if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
+    if (PICK.target === 'chat') await sendBlob({ name: f.name, path: r.path, mime: r.mime, size: r.size });
+    if (PICK.target === 'ai') { await attachPath({ path: r.path, name: f.name, mime: r.mime }); render(); }
+  } catch (e) { toast(t(e.message), 'err'); }
+  PICK.target = '';
+}
+
+// ---------------------------------------------------------------- AI in the messenger and mail
+const chatLines = () => (I.room?.messages || []).filter((m) => !m.encrypted && !m.redacted).map((m) => `${m.mine ? 'Me' : m.name}: ${m.body}`);
+export async function chatAiSummary() {
+  let out = ''; let busy = true;
+  const build = () => `<h2 class="sheet-title">${icon('sparkles')}${esc(t('Summarize chat'))}</h2>${busy ? skeleton(3) : `<div class="gm-text">${md(out)}</div>`}`;
+  openSheet(build);
+  try { out = await chatHelp({ mode: 'summary', lines: chatLines() }); } catch (e) { out = `⚠ ${t(e.message)}`; }
+  busy = false;
+  const b = $('.sheet-body'); if (b) b.innerHTML = build();
+}
+export async function chatAiReply() {
+  closeSheet(true);
+  const input = $('#msg-input');
+  if (!input) return;
+  const note = input.value.trim();
+  input.value = '';
+  input.placeholder = t('AI is writing…');
+  try { input.value = await chatHelp({ mode: 'reply', lines: chatLines(), note }); } catch (e) { toast(t(e.message), 'err'); input.value = note; }
+  input.placeholder = t('Message');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+}
+export async function translateMessage(id) {
+  const m = I.room?.messages.find((x) => x.id === id);
+  closeSheet(true);
+  if (!m?.body) return;
+  try { const tr = await chatHelp({ mode: 'translate', text: m.body }); openSheet(() => `<h2 class="sheet-title">${icon('globe')}${esc(t('Translation'))}</h2><div class="card pad-card"><p>${esc(tr)}</p></div>`); } catch (e) { toast(t(e.message), 'err'); }
+}
+
 export async function fileUpload(files) {
-  for (const f of [...files].slice(0, 20)) {
+  const list = [...files].slice(0, 20);
+  for (const [i, f] of list.entries()) {
     if (f.size > 25e6) { toast(t('{name} is too big (max 25 MB)', { name: f.name }), 'err'); continue; }
-    toast(t('Uploading {name}', { name: f.name }));
+    toast(list.length > 1 ? `${t('Uploading {name}', { name: f.name })} (${i + 1}/${list.length})` : t('Uploading {name}', { name: f.name }));
     try { const data = await readFile(f); await client().uploadFile(I.path, { name: f.name, base64: data.split(',')[1], mime: f.type }); }
     catch (e) { toast(t(e.message), 'err'); }
   }
@@ -811,3 +997,46 @@ export function disconnect() {
 
 export const roomTitle = () => I.room?.name || t('Chat');
 export const retry = (what) => { I.error[what] = null; if (what === 'rooms') loadRooms(); if (what === 'mail') loadMail(); if (what === 'files') loadFiles(); if (what === 'events') render(); };
+
+/** Opens an e-mail attachment (tries the mail API and the classic download link). */
+export function openMailAttachment(i, k) {
+  const m = I.mail?.[Number(i)];
+  const a = m?.full?.attachments[Number(k)];
+  if (!a) return;
+  const c = client();
+  const enc = (x) => encodeURIComponent(x);
+  const b64 = (x) => btoa(unescape(encodeURIComponent(x)));
+  openViewer({ name: a.name, size: a.size, request: [
+    { url: `${c.base}/iserv/mail/api/v2/account/${c.mailAccount}/mailbox/${b64(m.folder)}/message/${m.uid}/attachment/${enc(a.partId)}`, cookies: true },
+    { url: `${c.base}/iserv/mail/api/v2/account/${c.mailAccount}/mailbox/${b64(m.folder)}/message/${m.uid}/part/${enc(a.partId)}`, cookies: true },
+    { url: `${c.base}/iserv/mail/show/attachment?path=${enc(m.folder)}&msg=${enc(m.uid)}&part=${enc(a.partId)}`, cookies: true },
+  ] });
+}
+export async function mailAI(i, mode) {
+  const m = I.mail?.[Number(i)];
+  const msg = m?.full;
+  const box = $('#mail-ai-out');
+  if (!msg || !box) return;
+  let note = '';
+  if (mode === 'reply') { note = await uiPrompt(t('What should the reply say? (optional)'), '', { placeholder: t('e.g. I will hand it in on Friday') }); if (note === null) return; }
+  box.innerHTML = `<div class="card fv-ai-card">${skeleton(2)}</div>`;
+  const body = msg.text || new DOMParser().parseFromString(msg.html || '', 'text/html').body.textContent || '';
+  try {
+    const out = await mailHelp({ mode, subject: msg.subject, from: msg.from[0]?.name || '', body, note });
+    const b = $('#mail-ai-out');
+    if (b) b.innerHTML = `<div class="card fv-ai-card"><div class="gm-text">${md(out)}</div>${mode === 'reply' ? `<div class="mail-actions"><button class="btn small" data-act="mail-ai-use" data-i="${i}">${icon('copy')}${esc(t('Copy and reply'))}</button></div>` : ''}</div>`;
+    m.aiReply = out;
+  } catch (e) { const b = $('#mail-ai-out'); if (b) b.innerHTML = `<div class="notice warn">${icon('circle-alert')}<span>${esc(t(e.message))}</span></div>`; }
+}
+export function mailAiUse(i) {
+  const m = I.mail?.[Number(i)];
+  if (!m?.aiReply) return;
+  navigator.clipboard?.writeText(m.aiReply).catch(() => {});
+  toast(t('Copied. Paste it into the reply.'));
+  iservOpen(`mail/compose?replyTo=${encodeURIComponent(m.uid)}&path=${encodeURIComponent(m.folder)}`);
+}
+/** Task attachments use the IServ web session. */
+export function openTaskFile(href, name) {
+  const c = client();
+  openViewer({ name: name || 'file', request: { url: href.startsWith('http') ? href : c.base + href, cookies: true } });
+}

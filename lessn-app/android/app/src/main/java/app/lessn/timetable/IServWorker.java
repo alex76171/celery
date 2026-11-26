@@ -162,19 +162,27 @@ public class IServWorker extends Worker {
 
     // ------------------------------------------------------------ messenger (Matrix)
     private void checkChats(Context ctx, SharedPreferences p) throws Exception {
-        get("/iserv/messenger/");
-        Map<String, String> h = new HashMap<>();
-        h.put("Accept", "*/*");
-        Res auth = request(base + "/iserv/messenger/authenticate", "POST", "", h);
-        if (auth.code != 200 || !auth.body.trim().startsWith("{")) return;
-        JSONObject a = new JSONObject(auth.body);
-        String token = a.optString("access_token", null);
-        String me = a.optString("user_id", "");
-        if (token == null) return;
+        // Session found by the app (any sign-in method), else IServ's own token endpoint
+        String token = p.getString("mx_token", null);
+        String me = p.getString("mx_user", "");
+        String hs = p.getString("mx_hs", base);
+        if (token == null) {
+            get("/iserv/messenger/");
+            Map<String, String> h = new HashMap<>();
+            h.put("Accept", "*/*");
+            Res auth = request(base + "/iserv/messenger/authenticate", "POST", "", h);
+            if (auth.code != 200 || !auth.body.trim().startsWith("{")) return;
+            JSONObject a = new JSONObject(auth.body);
+            token = a.optString("access_token", null);
+            me = a.optString("user_id", "");
+            hs = base;
+            if (token == null) return;
+        }
         String filter = URLEncoder.encode("{\"room\":{\"timeline\":{\"limit\":1,\"types\":[\"m.room.message\"]},\"state\":{\"lazy_load_members\":true}},\"presence\":{\"not_types\":[\"*\"]}}", "UTF-8");
         Map<String, String> mh = new HashMap<>();
         mh.put("Authorization", "Bearer " + token);
-        Res s = request(base + "/_matrix/client/v3/sync?timeout=0&filter=" + filter, "GET", null, mh);
+        Res s = request(hs + "/_matrix/client/v3/sync?timeout=0&filter=" + filter, "GET", null, mh);
+        if (s.code == 401) { p.edit().remove("mx_token").apply(); return; }
         if (s.code != 200) return;
         JSONObject join = new JSONObject(s.body).optJSONObject("rooms");
         join = join == null ? null : join.optJSONObject("join");

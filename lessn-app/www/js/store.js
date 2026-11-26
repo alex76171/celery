@@ -30,6 +30,11 @@ export const DEFAULTS = {
   aiProvider: 'gemini',
   aiModels: {},
   aiBaseUrl: '',
+  aiFallback: true,
+  ai_chat: '',
+  ai_plan: '',
+  ai_summary: '',
+  ai_files: '',
   aiLang: 'auto',
   keepAudio: false,
   weekDays: 'auto', // auto | 5 | 6 | 7
@@ -70,7 +75,7 @@ export const store = {
   resetCustomization: () => {
     const s = store.settings();
     const keys = ['weekLayout', 'tabs', 'onboarded', 'lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
-      'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiProvider', 'aiModels', 'aiBaseUrl', 'aiLang', 'keepAudio'];
+      'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiProvider', 'aiModels', 'aiBaseUrl', 'aiLang', 'keepAudio', 'aiFallback', 'ai_chat', 'ai_plan', 'ai_summary', 'ai_files'];
     const keep = Object.fromEntries(keys.map((k) => [k, s[k]]));
     write('settings', keep);
   },

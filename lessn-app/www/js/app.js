@@ -9,7 +9,8 @@ import {
   refresh, loadWeek, loadHomework, loadExams, scheduleNative, iservClient, loadIServ, weekKey,
 } from './data.js';
 import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone, allExams } from './views.js';
-import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, aiModelPicked, openPricePage, loadAiModels } from './onboarding.js';
+import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, aiModelPicked, openPricePage, loadAiModels, viewAISettings, unlinkAI, aiRowMenu } from './onboarding.js';
+import { viewerAction } from './viewer.js';
 import {
   viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
   openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
@@ -22,7 +23,7 @@ import * as A from './assist.js';
 
 const tabList = () => [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }];
 const TITLES = {
-  grades: 'Grades', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
+  grades: 'Grades', 'ai-settings': 'AI helpers', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
   'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications', 'is-tasks': 'Tasks',
   today: 'Home', week: 'Timetable', tasks: 'Homework', exams: 'Exams',
 };
@@ -31,7 +32,7 @@ const isRoot = (v) => v === 'more' || A.userTabs().includes(v);
 const parentOf = (v) => PARENT[v] || 'more';
 const rootOf = (v) => { let x = v; for (let i = 0; i < 4 && !isRoot(x); i++) x = parentOf(x); return x; };
 const SUBVIEWS = new Proxy({}, { get: (_, v) => (typeof v === 'string' && !isRoot(v) ? TITLES[v] || v : undefined) });
-const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room'];
+const ORDER = ['today', 'week', 'tasks', 'exams', 'ai', 'ai-chat', 'more', 'grades', 'iserv', 'attendance', 'recorder', 'is-chat', 'is-mail', 'is-files', 'is-cal', 'is-notes', 'is-tasks', 'is-room', 'ai-settings'];
 
 // ---------------------------------------------------------------- shell
 const navHtml = () => `<nav class="tabs"><span class="tab-ind" id="tab-ind"></span>${tabList().map((x) => `<button data-act="tab" data-view="${x.id}" id="tab-${x.id}">${icon(x.icon)}<span>${esc(t(x.label))}</span></button>`).join('')}</nav>`;
@@ -113,7 +114,7 @@ export function render() {
   const views = {
     today: viewToday, week: viewWeek, tasks: viewTasks, exams: viewExams, more: viewMore, grades: viewGrades, attendance: viewAttendance,
     recorder: viewRecorder, iserv: IS.viewIServHub, 'is-chat': IS.viewChats, 'is-room': IS.viewRoom, 'is-mail': IS.viewMail,
-    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat,
+    'is-files': IS.viewFiles, 'is-cal': IS.viewCalendar, 'is-notes': IS.viewNotes, 'is-tasks': IS.viewTasksIServ, ai: A.viewAI, 'ai-chat': A.viewAIChat, 'ai-settings': viewAISettings,
   };
   if ((S.view === 'is-room' || S.view === 'ai-chat') && lastView === S.view && !S.anim) { updateHeader(); return; }
   content.innerHTML = views[S.view]();
@@ -319,13 +320,42 @@ function onClick(e) {
     case 'iserv-logout': uiConfirm(t('Disconnect IServ?'), { danger: true }).then((ok) => { if (ok) { IS.disconnect(); native.iservBackground({ enabled: false }); } }); break;
     case 'open-room': IS.openRoom(d.id); break;
     case 'chat-attach': IS.openAttachMenu(); break;
-    case 'pick': $(`#${d.input}`)?.click(); break;
+    case 'pick': { const inp = $(`#${d.input}`); if (!d.keep) closeSheet(true); inp?.click(); break; }
     case 'voice-start': IS.voiceStart(); break;
     case 'voice-send': IS.voiceStop(true); break;
     case 'voice-cancel': IS.voiceStop(false); break;
     case 'voice-play': IS.playVoice(d.mxc, d.id); break;
     case 'img-view': IS.viewImage(d.mxc); break;
     case 'msg-file': IS.downloadChatFile(d.mxc, d.name); break;
+    case 'msg-open': IS.openChatFile(d.mxc, d.name, d.size); break;
+    case 'msg-translate': IS.translateMessage(d.id); break;
+    case 'room-join': IS.joinRoom(d.id); break;
+    case 'chat-ai-sum': IS.chatAiSummary(); break;
+    case 'chat-ai-reply': IS.chatAiReply(); break;
+    case 'scan-start': IS.scanStart(d.target); break;
+    case 'scan-del': IS.scanDel(d.i); break;
+    case 'scan-done': IS.scanDone(); break;
+    case 'iserv-pick': closeSheet(true); setTimeout(() => IS.iservPick(d.target), 250); break;
+    case 'pick-go': IS.pickGo(d.p); break;
+    case 'pick-file': IS.pickFile(d.p); break;
+    case 'file-note': IS.fileNote(); break;
+    case 'mail-att': IS.openMailAttachment(d.i, d.k); break;
+    case 'mail-ai': IS.mailAI(d.i, d.mode); break;
+    case 'mail-ai-use': IS.mailAiUse(d.i); break;
+    case 'task-file': IS.openTaskFile(d.url, d.name); break;
+    case 'fv-open': case 'fv-share': case 'fv-save': case 'fv-ai': case 'fv-ai-copy': case 'fv-chat': viewerAction(d.act, el); break;
+    case 'ai-attach': A.openAiAttach(); break;
+    case 'ai-attach-iserv': closeSheet(true); setTimeout(() => IS.iservPick('ai'), 250); break;
+    case 'ai-switch': A.switchAI(el); break;
+    case 'ai-retry': A.retryWith(el, d.i); break;
+    case 'ai-copy': A.copyAnswer(d.i); break;
+    case 'ai-link': closeSheet(true); openAISetup(null, { add: true }); break;
+    case 'ai-edit': openAISetup(null, { provider: d.p }); break;
+    case 'ai-default': setS('aiProvider', d.p); render(); break;
+    case 'ai-unlink': uiConfirm(t('Unlink {name}?', { name: d.name }), { danger: true, ok: t('Unlink') }).then((ok) => { if (ok) unlinkAI(d.p); }); break;
+    case 'ai-row': aiRowMenu(el, d.p); break;
+    case 'hw-scan': $('#hw-scan')?.click(); break;
+    case 'hw-found-save': A.saveFound(); break;
     case 'msg-copy': IS.copyMessage(d.id); break;
     case 'msg-delete': uiConfirm(t('Delete this message for everyone?'), { ok: t('Delete'), danger: true }).then((ok) => { if (ok) IS.deleteMessage(d.id); }); break;
     case 'new-chat': IS.openNewChat(); break;
@@ -335,7 +365,7 @@ function onClick(e) {
     case 'file-rename': IS.fileRename(d.p); break;
     case 'file-delete': IS.fileDelete(d.p); break;
     case 'file-mkdir': IS.fileMkdir(); break;
-    case 'file-upload': $('#file-up')?.click(); break;
+    case 'file-upload': IS.openUploadMenu(); break;
     case 'is-task': IS.openTask(d.id); break;
     case 'is-tasks-retry': S.iservTasks = null; IS.retry('tasks'); render(); break;
     case 'hw-add': A.openHomeworkForm(); break;
@@ -363,7 +393,7 @@ function onClick(e) {
       updateHeader();
       break;
     }
-    case 'setup-ai': openAISetup(); break;
+    case 'setup-ai': if (S.api) setView('ai-settings', 'left'); else openAISetup(); break;
     case 'setup-iserv': openIServSetup(); break;
     case 'setup-ai-save': saveAISetup(); break;
     case 'setup-ai-skip': closeSheet(); break;
@@ -400,7 +430,11 @@ function onInput(e) {
   if (el.id === 'room-q') { IS.filterRooms(el.value); return; }
   if (el.id === 'chat-photo' || el.id === 'chat-camera') { IS.sendFiles(el.files, true); el.value = ''; return; }
   if (el.id === 'chat-file') { IS.sendFiles(el.files, false); el.value = ''; return; }
-  if (el.id === 'file-up') { IS.fileUpload(el.files); el.value = ''; return; }
+  if (el.id === 'file-up' || el.id === 'file-up-photo' || el.id === 'file-up-cam') { IS.fileUpload(el.files); el.value = ''; return; }
+  if (el.id === 'scan-cam' || el.id === 'scan-gal') { IS.scanAdd(el.files); el.value = ''; return; }
+  if (el.id === 'ai-cam') { A.attachFiles(el.files); el.value = ''; return; }
+  if (el.id === 'ai-doc') { A.attachDocs(el.files); el.value = ''; return; }
+  if (el.id === 'hw-scan') { A.scanHomework(el.files); el.value = ''; return; }
   if (el.id === 'user-q') { IS.openNewChat.search(el.value.trim()); return; }
   if (el.id === 'ai-file') { A.attachFiles(el.files); el.value = ''; return; }
   if (el.id === 'ai-input') { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; return; }
