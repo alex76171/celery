@@ -1265,3 +1265,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .file-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 11px 6px 11px 14px; text-align: left; }
 .file-main:active { background: var(--surface2); }
 .file-main .row-text b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk .chg-l { color: var(--warn); font-weight: 800; text-transform: uppercase; font-size: .58rem; }
+.model-row { display: flex; gap: 8px; align-items: center; }
+.model-row > .dd, .model-row > .input { flex: 1; min-width: 0; }
+.setup .card { margin: 4px 0 12px; }
+.setup .btn.small.ghost { align-self: center; margin-bottom: 4px; }

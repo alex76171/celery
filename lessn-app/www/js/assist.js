@@ -4,7 +4,7 @@ import {
   S, t, $, esc, icon, fmt, relDay, inDays, pad, store, emptyState, skeleton, stagger, openSheet, closeSheet, rerenderSheet,
   toast, colorFor, subjLabel, toUntisDate, fromUntisDate, daysBetween, startOfDay, addDays, badge, fmtTime,
 } from './core.js';
-import { chat as aiChat, studyPlan as aiPlan, DEFAULT_MODEL, LANG_NAME } from './ai.js';
+import { chat as aiChat, studyPlan as aiPlan, LANG_NAME, aiReady } from './ai.js';
 import { client as iservClient, iservOpenUrl } from './iserv-ui.js';
 import { render, setView } from './app.js';
 
@@ -195,7 +195,7 @@ export function viewAI() {
       <h1 class="ai-hello">${esc(name ? t('Hi {name}', { name }) : t('Hi there'))}</h1>
       <h2 class="ai-ask">${esc(t('How can I help you today?'))}</h2>
     </div>
-    ${store.aiKey() ? '' : `<button class="ai-setup" data-act="setup-ai">${icon('key-round')}<span><b>${esc(t('Set up AI'))}</b><small>${esc(t('Add your Gemini API key to use the AI.'))}</small></span>${icon('chevron-right', 'row-chev')}</button>`}
+    ${aiReady() ? '' : `<button class="ai-setup" data-act="setup-ai">${icon('key-round')}<span><b>${esc(t('Set up AI'))}</b><small>${esc(t('Choose an AI provider and add your key.'))}</small></span>${icon('chevron-right', 'row-chev')}</button>`}
     <div class="ai-sugs">${suggestions().map((x, i) => `<button class="ai-sug" data-act="${x.act}" ${x.data} style="--i:${i}"><b>${esc(x.title)}</b><small>${esc(x.sub)}</small><span class="ai-sug-ic">${icon(x.ic)}</span></button>`).join('')}</div>
     ${list.length ? `<div class="section-title">${esc(t('Recent'))}</div><div class="ai-recent">${list.map((c) => `<button class="ai-rec" data-act="ai-open" data-id="${c.id}">${icon(c.kind === 'exam' ? 'graduation-cap' : c.kind === 'homework' ? 'clipboard-list' : 'message-square')}<span>${esc(c.title)}</span></button>`).join('')}</div>` : ''}
     <div class="grow"></div>
@@ -279,7 +279,7 @@ export async function sendAI(textOverride) {
   const input = $('#ai-input');
   const text = (textOverride ?? input?.value ?? '').trim();
   if (!text && !pending.length) return;
-  if (!store.aiKey()) { toast(t('Add your Gemini API key first.'), 'err'); return; }
+  if (!aiReady()) { toast(t('Add an AI key first.'), 'err'); return; }
   if (S.view === 'ai') newChat({ keepPending: true });
   const list = chats();
   const c = list.find((x) => x.id === current);
@@ -291,7 +291,7 @@ export async function sendAI(textOverride) {
   S.aiThinking = c.id;
   repaint(c);
   try {
-    const answer = await aiChat({ apiKey: store.aiKey(), model: S.settings.aiModel || DEFAULT_MODEL, messages: msgs, system: systemPrompt(c.context) });
+    const answer = await aiChat({ messages: msgs, system: systemPrompt(c.context) });
     msgs.push({ role: 'model', text: answer });
   } catch (e) {
     msgs.push({ role: 'model', text: `⚠ ${t(e.message)}` });
@@ -355,7 +355,7 @@ export function openExam(e) {
 }
 
 export async function makePlan(e) {
-  if (!store.aiKey()) { toast(t('Add your Gemini API key first.'), 'err'); return; }
+  if (!aiReady()) { toast(t('Add an AI key first.'), 'err'); return; }
   const id = examId(e);
   S.planBusy = id;
   rerenderSheet();
@@ -364,7 +364,7 @@ export async function makePlan(e) {
     const iso = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
     const sums = summariesFor(e.subject, 8).map((x) => ({ date: iso(fromUntisDate(x.date)), title: x.result.title, topics: x.result.topics || [], keyPoints: x.result.keyPoints || [] }));
     const res = await aiPlan({
-      apiKey: store.aiKey(), model: S.settings.aiModel || DEFAULT_MODEL, lang: S.settings.lang, today: iso(new Date()),
+      lang: S.settings.lang, today: iso(new Date()),
       exam: { date: iso(d), subject: subjLabel(e.subject), name: e.name || e.type || '', text: e.text || '' }, summaries: sums,
     });
     savePlans({ ...plans(), [id]: { ...res, subject: e.subject, examDate: e.date, name: e.name || e.type || '', t: Date.now() } });

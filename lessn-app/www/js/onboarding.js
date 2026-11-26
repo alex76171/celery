@@ -1,5 +1,6 @@
 // Setup after the first login: AI key, then IServ (with automatic server detection).
-import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast } from './core.js';
+import { S, t, $, esc, icon, store, openSheet, closeSheet, rerenderSheet, toast, dd } from './core.js';
+import { PROVIDERS, listModels, complete } from './ai.js';
 import { native, hasNative } from './native.js';
 import { IServ, normalizeIServHost, normalizeIServUser } from './iserv.js';
 import { render } from './app.js';
@@ -49,27 +50,92 @@ export async function detectIServ(school) {
 }
 
 // ---------------------------------------------------------------- AI setup sheet
-export function openAISetup(next) {
-  openSheet(() => `<div class="setup">
+const AIS = { provider: 'gemini', models: null, loading: false, error: '', testing: false };
+
+function aiForm() {
+  const p = PROVIDERS[AIS.provider];
+  const cur = (S.settings.aiModels || {})[AIS.provider] || (AIS.provider === 'gemini' && S.settings.aiModel) || p.model;
+  const models = AIS.models || (cur ? [cur] : []);
+  return `<div class="setup">
     <div class="setup-orb">${icon('sparkles')}</div>
     <h2>${esc(t('Meet your AI helper'))}</h2>
     <p>${esc(t('It explains homework, answers questions about photos, summarizes recorded lessons and makes study plans for your exams.'))}</p>
-    <ol class="setup-steps">
-      <li>${esc(t('Open Google AI Studio and sign in with a Google account.'))}</li>
-      <li>${esc(t('Tap "Create API key" and copy it.'))}</li>
-      <li>${esc(t('Paste it here.'))}</li>
-    </ol>
-    <button class="btn small ghost" data-act="ai-getkey">${icon('external-link')}${esc(t('Open Google AI Studio'))}</button>
-    <label class="input" style="margin-top:14px">${icon('key-round')}<input id="setup-key" type="password" placeholder="AIza…" value="${esc(store.aiKey())}" autocomplete="off"></label>
-    <button class="btn" data-act="setup-ai-save">${esc(t('Continue'))}</button>
+    <div class="card">
+      ${dd(t('AI provider'), 'ai-provider', Object.entries(PROVIDERS).map(([id, x]) => [id, x.name]), AIS.provider, { act: 'ai-provider', ic: 'sparkles' })}
+    </div>
+    ${p.keyUrl ? `<button class="btn small ghost" data-act="ai-getkey">${icon('external-link')}${esc(t('Get a key'))} · ${esc(new URL(p.keyUrl).hostname)}</button>` : ''}
+    ${AIS.provider === 'custom' ? `<label class="lbl">${esc(t('Server address'))}</label>
+      <label class="input">${icon('server')}<input id="setup-base" placeholder="https://api.example.com/v1" value="${esc(S.settings.aiBaseUrl || '')}" autocapitalize="off" autocorrect="off"></label>` : ''}
+    <label class="lbl">${esc(t('API key'))}</label>
+    <label class="input">${icon('key-round')}<input id="setup-key" type="password" placeholder="${esc(p.placeholder)}" value="${esc(store.aiKey(AIS.provider))}" autocomplete="off"></label>
+    <label class="lbl">${esc(t('Model'))}</label>
+    <div class="model-row">
+      ${AIS.models ? `<label class="dd"><span class="dd-text" id="model-text">${esc(cur && models.includes(cur) ? cur : models[0] || '')}</span>${icon('chevron-down', 'dd-ic')}<select id="setup-model">${models.map((m) => `<option ${m === cur ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>`
+        : `<label class="input">${icon('cpu')}<input id="setup-model" value="${esc(cur)}" placeholder="${esc(p.model || 'model-name')}" autocapitalize="off" autocorrect="off"></label>`}
+      <button class="icon-btn" data-act="ai-load-models" aria-label="${esc(t('Load models'))}">${icon(AIS.loading ? 'refresh-cw' : 'list', AIS.loading ? 'spin-ic' : '')}</button>
+    </div>
+    ${PROVIDERS[AIS.provider].audio ? '' : `<p class="hint">${icon('info', 'mini')} ${esc(t('This provider cannot listen to lesson recordings. For summaries, also add a Gemini, OpenAI or Mistral key.'))}</p>`}
+    ${AIS.error ? `<div class="err shake">${icon('circle-alert')}<span>${esc(AIS.error)}</span></div>` : ''}
+    <button class="btn" data-act="setup-ai-save" ${AIS.testing ? 'disabled' : ''}>${AIS.testing ? `${icon('refresh-cw', 'spin-ic')}${esc(t('Testing…'))}` : esc(t('Save'))}</button>
     <button class="link center" data-act="setup-ai-skip">${esc(t('Skip for now'))}</button>
-  </div>`, { full: true, onClose: () => { const n = next; next = null; n?.(); } });
-  openAISetup.done = () => { closeSheet(); };
+  </div>`;
 }
-export function saveAISetup() {
-  const v = $('#setup-key')?.value.trim();
-  if (v) { store.setAiKey(v); toast(t('Key saved')); }
+function keepAi(fn) {
+  const v = { k: $('#setup-key')?.value, b: $('#setup-base')?.value, m: $('#setup-model')?.value };
+  fn();
+  if (v.k !== undefined && $('#setup-key')) $('#setup-key').value = v.k;
+  if (v.b !== undefined && $('#setup-base')) $('#setup-base').value = v.b;
+  if (v.m && $('#setup-model')?.tagName === 'INPUT') $('#setup-model').value = v.m;
+}
+
+export function openAISetup(next) {
+  Object.assign(AIS, { provider: S.settings.aiProvider || 'gemini', models: null, loading: false, error: '', testing: false });
+  openSheet(aiForm, { full: true, onClose: () => { const n = next; next = null; n?.(); } });
+}
+export function setAiProvider(id) {
+  Object.assign(AIS, { provider: id, models: null, error: '' });
+  rerenderSheet();
+}
+export function openKeyPage() { const p = PROVIDERS[AIS.provider]; if (p.keyUrl) native.openUrl(p.keyUrl); }
+
+export async function loadAiModels() {
+  const key = $('#setup-key')?.value.trim();
+  const base = $('#setup-base')?.value.trim();
+  if (!key) { AIS.error = t('Add an AI key first.'); keepAi(rerenderSheet); return; }
+  AIS.loading = true; AIS.error = ''; keepAi(rerenderSheet);
+  try {
+    const r = await listModels(AIS.provider, key, base);
+    AIS.models = r.ids;
+    S.settings.aiModels = { ...(S.settings.aiModels || {}), [AIS.provider]: ((S.settings.aiModels || {})[AIS.provider] && r.ids.includes(S.settings.aiModels[AIS.provider])) ? S.settings.aiModels[AIS.provider] : r.best };
+  } catch (e) { AIS.error = e.message; }
+  AIS.loading = false;
+  keepAi(rerenderSheet);
+}
+
+export async function saveAISetup() {
+  const key = $('#setup-key')?.value.trim();
+  const base = ($('#setup-base')?.value || '').trim().replace(/\/+$/, '');
+  const model = ($('#setup-model')?.value || '').trim();
+  if (!key) { closeSheet(); return; }
+  const prov = AIS.provider;
+  const config = { provider: prov, p: PROVIDERS[prov], key, model: model || PROVIDERS[prov].model, base: prov === 'custom' ? base : PROVIDERS[prov].base };
+  if (!config.model || (prov === 'custom' && !base)) { AIS.error = t('Fill in the server address and model.'); keepAi(rerenderSheet); return; }
+  AIS.testing = true; AIS.error = ''; keepAi(rerenderSheet);
+  try {
+    await complete({ config, messages: [{ role: 'user', text: 'Reply with the single word OK.' }] });
+  } catch (e) {
+    AIS.testing = false; AIS.error = e.message; keepAi(rerenderSheet);
+    return;
+  }
+  AIS.testing = false;
+  store.setAiKey(key, prov);
+  S.settings.aiProvider = prov;
+  S.settings.aiModels = { ...(S.settings.aiModels || {}), [prov]: config.model };
+  if (prov === 'custom') S.settings.aiBaseUrl = base;
+  store.saveSettings(S.settings);
+  toast(t('AI connected: {name}', { name: PROVIDERS[prov].name }));
   closeSheet();
+  render();
 }
 
 // ---------------------------------------------------------------- IServ setup sheet

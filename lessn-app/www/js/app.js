@@ -9,7 +9,7 @@ import {
   refresh, loadWeek, loadHomework, loadExams, scheduleNative, iservClient, loadIServ, weekKey,
 } from './data.js';
 import { viewToday, viewWeek, viewTasks, viewExams, openLesson, hwDone, allExams } from './views.js';
-import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup } from './onboarding.js';
+import { openAISetup, openIServSetup, maybeRunSetup, saveAISetup, saveIServSetup, setAiProvider, openKeyPage, loadAiModels } from './onboarding.js';
 import {
   viewMore, viewGrades, viewAttendance, viewRecorder, openCustomize, openBrowse, openHolidays, openNews,
   openGradeForm, saveGrade, togglePresence, setSchoolLocation, checkNow, attDay, moveMonth,
@@ -381,13 +381,8 @@ function onClick(e) {
     case 'is-note': IS.openNote(d.id, d.url); break;
     case 'is-read-all': IS.readAll(); break;
     // recorder
-    case 'ai-getkey': native.openUrl('https://aistudio.google.com/apikey'); break;
-    case 'ai-savekey': {
-      const v = $('#ai-key').value.trim();
-      if (v) { store.setAiKey(v); toast(t('Key saved')); render(); }
-      break;
-    }
-    case 'ai-clearkey': if (confirm(t('Remove the API key?'))) { store.setAiKey(''); render(); } break;
+    case 'ai-getkey': openKeyPage(); break;
+    case 'ai-load-models': loadAiModels(); break;
     case 'rec-start': recStart(); break;
     case 'rec-stop': recStop(); break;
     case 'open-summary': closeSheet(true); openSummary(d.id); break;
@@ -469,6 +464,7 @@ function boot() {
   document.addEventListener('input', (e) => { if (S.api) onInput(e); });
   document.addEventListener('change', (e) => { if (S.api && e.target.type === 'color' && sheetState) rerenderSheet(); });
   document.addEventListener('change', (e) => {
+    if (e.target.id === 'setup-model' && e.target.tagName === 'SELECT') { const tx = $('#model-text'); if (tx) tx.textContent = e.target.value; return; }
     const sel = e.target.closest?.('select[data-dd]');
     if (!sel || !S.api) return;
     const v = sel.value;
@@ -480,6 +476,7 @@ function boot() {
       case 'hw-filter': S.hwFilter = v; S.anim = 'fade'; render(); break;
       case 'mail-folder': IS.setFolder(v); break;
       case 'browse-kind': openBrowse.setKind(v); break;
+      case 'ai-provider': setAiProvider(v); break;
       default:
     }
   });

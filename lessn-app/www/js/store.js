@@ -27,6 +27,9 @@ export const DEFAULTS = {
   presenceRadius: 250,
   schoolLoc: null,
   aiModel: 'gemini-flash-latest',
+  aiProvider: 'gemini',
+  aiModels: {},
+  aiBaseUrl: '',
   aiLang: 'auto',
   keepAudio: false,
   weekDays: 'auto', // auto | 5 | 6 | 7
@@ -67,7 +70,7 @@ export const store = {
   resetCustomization: () => {
     const s = store.settings();
     const keys = ['weekLayout', 'tabs', 'onboarded', 'lang', 'startView', 'weekDays', 'autoRefresh', 'notifyLessons', 'notifyMinutes', 'notifyChanges', 'dndLessons',
-      'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiLang', 'keepAudio'];
+      'dndBreaks', 'presenceCheck', 'presenceRadius', 'schoolLoc', 'aiModel', 'aiProvider', 'aiModels', 'aiBaseUrl', 'aiLang', 'keepAudio'];
     const keep = Object.fromEntries(keys.map((k) => [k, s[k]]));
     write('settings', keep);
   },
@@ -82,8 +85,23 @@ export const store = {
 
   iserv: () => read('iserv', null),
   setIServ: (v) => (v ? write('iserv', v) : remove('iserv')),
-  aiKey: () => read('aikey', ''),
-  setAiKey: (v) => write('aikey', v),
+  /** API keys per AI provider. The single key of older versions belongs to Gemini. */
+  aiKeys: () => {
+    const keys = read('aikeys', null);
+    if (keys) return keys;
+    const legacy = read('aikey', '');
+    return legacy ? { gemini: legacy } : {};
+  },
+  aiKey: (provider) => {
+    const p = provider || ({ ...DEFAULTS, ...read('settings', {}) }).aiProvider || 'gemini';
+    return store.aiKeys()[p] || '';
+  },
+  setAiKey: (v, provider) => {
+    const p = provider || ({ ...DEFAULTS, ...read('settings', {}) }).aiProvider || 'gemini';
+    const keys = store.aiKeys();
+    if (v) keys[p] = v; else delete keys[p];
+    write('aikeys', keys);
+  },
 
   manualGrades: () => read('grades', []),
   setManualGrades: (v) => write('grades', v),

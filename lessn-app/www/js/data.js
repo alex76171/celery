@@ -186,6 +186,9 @@ export function prepareDay(lessons, date) {
   const u = toUntisDate(date);
   let list = (lessons || []).filter((l) => l.date === u).map((l) => ({ ...l, ids: [l.id], units: 1, breakMin: 0 }));
   list.sort((a, b) => a.start - b.start || subjKey(a).localeCompare(subjKey(b)));
+  // A cancelled lesson with another lesson in its slot is a substitution ("Vertretung"), not a cancellation
+  const replaced = replacementsOf(list);
+  list = list.filter((l) => !replaced.has(l.id));
   if (S.settings.hideCancelled) list = list.filter((l) => l.code !== 'cancelled');
   if (S.settings.mergeDoubles) {
     const out = [];
@@ -209,13 +212,34 @@ export function prepareDay(lessons, date) {
   return list;
 }
 
+/**
+ * Finds cancelled lessons that another lesson takes the place of. Marks the replacement with
+ * `replaces` (the original lessons) and returns the ids of the cancelled originals.
+ */
+export function replacementsOf(list) {
+  const out = new Set();
+  for (const c of list) {
+    if (c.code !== 'cancelled') continue;
+    const cands = list.filter((r) => r.code !== 'cancelled' && r.date === c.date && r.start < c.end && r.end > c.start);
+    const rep = cands.find((r) => isChanged(r) || r.subst) || (cands.length === 1 ? cands[0] : null);
+    if (!rep) continue;
+    out.add(c.id);
+    rep.replaces = [...(rep.replaces || []), c];
+  }
+  return out;
+}
+const replacedNames = (l) => [...new Set((l.replaces || []).map((x) => subjName(x)))].join(', ');
+
 export function changes(l) {
   const out = [];
+  if (l.replaces?.length) {
+    out.push({ cls: 'warn', icon: 'arrow-left-right', text: `${t('Substitution')} · ${t('instead of {s}', { s: replacedNames(l) })}` });
+  }
   if (l.code === 'cancelled') out.push({ cls: 'bad', icon: 'ban', text: t('Cancelled') });
   if (l.type === 'ex') out.push({ cls: 'exam', icon: 'graduation-cap', text: t('Exam') });
-  if (l.teachers.some((x) => x.orig)) out.push({ cls: 'warn', icon: 'arrow-left-right', text: t('Substitute') });
+  if (l.teachers.some((x) => x.orig) && !l.replaces?.length) out.push({ cls: 'warn', icon: 'arrow-left-right', text: t('Substitute') });
   if (l.rooms.some((r) => r.orig)) out.push({ cls: 'warn', icon: 'door-open', text: t('Room change') });
-  if (l.code === 'irregular' && out.length === 0) out.push({ cls: 'warn', icon: 'triangle-alert', text: t('Changed') });
+  if (l.code === 'irregular' && out.length === 0 && !l.replaces?.length) out.push({ cls: 'warn', icon: 'triangle-alert', text: t('Changed') });
   return out;
 }
 export const isChanged = (l) => l.code === 'cancelled' || l.code === 'irregular' || l.teachers.some((x) => x.orig) || l.rooms.some((r) => r.orig);
@@ -240,8 +264,10 @@ function detectChanges(before, after) {
   const first = !Object.keys(seen).length && !before;
   const now = toUntisDate(new Date());
   const fresh = [];
-  for (const l of after) {
-    if (!isChanged(l) || l.date < now) continue;
+  const work = after.map((l) => ({ ...l }));
+  const replaced = replacementsOf(work);
+  for (const l of work) {
+    if (replaced.has(l.id) || !isChanged(l) || l.date < now) continue;
     const k = changeSig(l);
     if (!seen[k]) { seen[k] = l.date; if (!first && before) fresh.push(l); }
   }
@@ -250,7 +276,7 @@ function detectChanges(before, after) {
   store.setSeenChanges(seen);
   if (!fresh.length || !S.settings.notifyChanges) return;
   const l = fresh[0];
-  const what = l.code === 'cancelled' ? t('Cancelled') : t('Changed');
+  const what = l.code === 'cancelled' ? t('Cancelled') : l.replaces?.length ? t('Substitution') : t('Changed');
   const msg = `${subjName(l)} · ${fmt(fromUntisDate(l.date), { weekday: 'short', day: 'numeric', month: 'short' })} ${fmtTime(l.start)}`;
   toast(`${what}: ${msg}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ''}`);
   native.schedule([...pendingEvents, { at: Date.now() + 1500, type: 'remind', id: 900, title: `${what}: ${subjName(l)}`, body: msg }]);

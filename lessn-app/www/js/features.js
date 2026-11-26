@@ -6,7 +6,7 @@ import {
 } from './core.js';
 import { LANGS } from './i18n.js';
 import { native, hasNative } from './native.js';
-import { summarizeAudio, DEFAULT_MODEL } from './ai.js';
+import { summarizeAudio, aiReady, audioReady, aiConfig } from './ai.js';
 import {
   loadGrades, loadAbsences, offlineInfo, weekData, prepareDay, scheduleNative, ownElement,
 } from './data.js';
@@ -36,7 +36,7 @@ export function viewMore() {
     <div class="card">
       ${dd(t('Language'), 'lang', Object.entries(LANGS), s.lang)}
       ${row('tabs-edit', 'layout-grid', t('Tabs'), userTabs().map((k) => t(TAB_DEFS[k].label)).join(' · '))}
-      ${row('setup-ai', 'sparkles', t('AI helper'), store.aiKey() ? t('Connected') : t('Not set up'))}
+      ${row('setup-ai', 'sparkles', t('AI helper'), aiReady() ? `${aiConfig().p.name} · ${aiConfig().model}` : t('Not set up'))}
       ${row('setup-iserv', 'school', 'IServ', store.iserv()?.host || t('Not set up'))}
       ${dd(t('Days per week'), 'weekDays', [['auto', t('Auto')], ['5', '5'], ['6', '6'], ['7', '7']], s.weekDays)}
       ${toggle('autoRefresh', t('Refresh on open'), t('Update when you return to the app'))}
@@ -256,7 +256,7 @@ function currentLesson() {
 }
 
 export function viewRecorder() {
-  const key = store.aiKey();
+  const key = audioReady();
   const rec = recState();
   const sums = store.summaries().slice().sort((a, b) => b.t - a.t);
   const cur = currentLesson();
@@ -264,10 +264,7 @@ export function viewRecorder() {
   const busy = S.recBusy;
   return `<div class="pad">
     <div class="notice warn"${stagger(0)}>${icon('shield-alert')}<span>${esc(t('Beta. Only record lessons when your teacher and class agree. Recording people without their consent can be illegal.'))}</span></div>
-    ${!key ? `<div class="card form"${stagger(1)}>
-      <div class="row static"><span class="row-ic">${icon('key-round')}</span><span class="row-text"><b>${esc(t('Gemini API key'))}</b><small>${esc(t('Needed to turn the recording into a summary. Free to create.'))}</small></span></div>
-      <div class="row-pad"><input class="field" id="ai-key" type="password" placeholder="AIza…"><div class="btn-row"><button class="btn small ghost" data-act="ai-getkey">${icon('external-link')}${esc(t('Get a key'))}</button><button class="btn small" data-act="ai-savekey">${esc(t('Save'))}</button></div></div>
-    </div>` : ''}
+    ${!key ? `<button class="ai-setup" data-act="setup-ai"${stagger(1)}>${icon('key-round')}<span><b>${esc(t('Set up AI'))}</b><small>${esc(t('Lesson summaries need Gemini, OpenAI or Mistral for the audio. Add one of these keys in the AI settings.'))}</small></span>${icon('chevron-right', 'row-chev')}</button>` : ''}
     <div class="rec-panel ${rec ? 'live' : ''}"${stagger(2)}>
       <button class="rec-btn" data-act="${rec ? 'rec-stop' : 'rec-start'}" ${busy ? 'disabled' : ''} aria-label="${esc(rec ? t('Stop') : t('Record'))}">${icon(rec ? 'square' : 'mic')}</button>
       <div class="rec-info">
@@ -279,7 +276,7 @@ export function viewRecorder() {
     <div class="card"${stagger(3)}>
       ${dd(t('Summary language'), 'aiLang', [['auto', t('App language')], ...Object.entries(LANGS)], S.settings.aiLang, { sub: t('The lesson audio can be German, the summary can be in any of these') })}
       ${toggle('keepAudio', t('Keep audio after summary'))}
-      ${key ? row('ai-clearkey', 'key-round', t('Remove API key')) : ''}
+      ${row('setup-ai', 'key-round', t('AI provider'), aiReady() ? aiConfig().p.name : t('Not set up'))}
     </div>
     <div class="section-title">${icon('sparkles')}${esc(t('Summaries'))} · ${sums.length}</div>
     ${sums.length ? sums.map((x, i) => `<button class="sum-card ${x.status === 'error' ? 'err' : ''}" data-act="open-summary" data-id="${x.id}" style="--c:${colorFor(x.subject)};--i:${Math.min(i + 4, 14)}">
@@ -293,7 +290,7 @@ export function viewRecorder() {
 
 export async function recStart() {
   if (!hasNative()) { toast(t('Only available in the Android app'), 'err'); return; }
-  if (!store.aiKey()) { toast(t('Add your Gemini API key first.'), 'err'); return; }
+  if (!audioReady()) { toast(t('Lesson summaries need Gemini, OpenAI or Mistral for the audio. Add one of these keys in the AI settings.'), 'err'); return; }
   try {
     const st = await native.request(['microphone', 'notifications']);
     if (st.microphone !== 'granted') { toast(t('Microphone permission is needed'), 'err'); return; }
@@ -328,7 +325,7 @@ export async function processSummary(id) {
     const lang = S.settings.aiLang === 'auto' ? S.settings.lang : S.settings.aiLang;
     const d = fromUntisDate(item.date);
     const result = await summarizeAudio({
-      apiKey: store.aiKey(), model: S.settings.aiModel || DEFAULT_MODEL, base64: data, mime: 'audio/mp4', lang,
+      base64: data, mime: 'audio/mp4', lang,
       context: { subject: subjLabel(item.subject), date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} (${fmt(d, { weekday: 'long' })})` },
     });
     update({ status: 'done', result, path: S.settings.keepAudio ? item.path : null });
@@ -534,8 +531,6 @@ export function openCustomize() {
         <div class="subj-text"><small>${esc(k)}</small><input class="field" data-subj-name="${esc(k)}" placeholder="${esc(long)}" value="${esc(st.subjectNames[k] || '')}"></div>
         ${st.subjectColors[k] || st.subjectNames[k] ? `<button class="icon-btn" data-act="subj-reset" data-k="${esc(k)}" aria-label="Reset">${icon('rotate-ccw')}</button>` : ''}
       </div>`).join('')}</div>` : `<p class="hint">${esc(t('Subjects appear here once your timetable has loaded.'))}</p>`}
-    <div class="section-title">${esc(t('AI model'))}</div>
-    <div class="card"><div class="row-pad"><input class="field" data-key="aiModel" value="${esc(st.aiModel)}" placeholder="${DEFAULT_MODEL}"></div></div>
     <div class="section-title">${esc(t('Backup'))}</div>
     <div class="card">${row('export-settings', 'upload', t('Copy customization'))}${row('import-settings', 'download', t('Paste customization'))}</div>
     <div class="card"><button class="row danger" data-act="reset-custom"><span class="row-ic">${icon('rotate-ccw')}</span><span class="row-text"><b>${esc(t('Reset customization'))}</b></span></button></div>

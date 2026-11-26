@@ -181,7 +181,7 @@ function dayStrip() {
   const data = weekData(S.week) || [];
   return `<div class="strip">${visibleDays(S.week).map((d) => {
     const u = toUntisDate(d);
-    const day = data.filter((l) => l.date === u);
+    const day = prepareDay(data, d);
     const cancelled = day.filter((l) => l.code === 'cancelled').length;
     const ch = day.some((l) => isChanged(l) && l.code !== 'cancelled');
     const hol = holidayFor(d);
@@ -296,6 +296,7 @@ export function viewWeek() {
       const name = s.subjectShortInGrid ? subjName(l, true) : subjName(l);
       const lines = [];
       if (l.code === 'cancelled' && h > 34) lines.push(`<span class="x">${esc(t('Cancelled'))}</span>`);
+      else if (l.replaces?.length && h > 34) lines.push(`<span class="chg-l">${esc(t('Substitution'))}</span>`);
       else if (s.showRoom && l.rooms.length && h > 34) lines.push(`<span>${roomText(l)}</span>`);
       if (s.showTeacher && l.teachers.length && h > 52 && l.code !== 'cancelled') lines.push(`<span>${placeText(l.teachers)}</span>`);
       return `<button class="blk ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) ? 'changed' : ''} ${l.type === 'ex' ? 'is-exam' : ''} ${l.chainPrev ? 'chain-prev' : ''} ${l.chainNext ? 'chain-next' : ''}" data-act="lesson" data-id="${l.id}"
@@ -334,7 +335,7 @@ function weekList(days, data) {
       ${list.length ? `<div class="wl-lessons">${list.map((l) => `<button class="wl-l ${l.code === 'cancelled' ? 'cancelled' : ''} ${isChanged(l) && l.code !== 'cancelled' ? 'changed' : ''}" data-act="lesson" data-id="${l.id}" style="--c:${colorFor(subjKey(l))}">
         <span class="wl-t">${fmtTime(l.start)}</span><i class="wl-bar"></i>
         <span class="wl-n">${esc(subjName(l))}${l.units > 1 ? ` <em>×${l.units}</em>` : ''}</span>
-        <span class="wl-r">${l.code === 'cancelled' ? `<b class="bad">${esc(t('Cancelled'))}</b>` : roomText(l)}</span>
+        <span class="wl-r">${l.code === 'cancelled' ? `<b class="bad">${esc(t('Cancelled'))}</b>` : l.replaces?.length ? `<b class="chg">${esc(t('Substitution'))}</b>` : roomText(l)}</span>
       </button>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
@@ -439,6 +440,7 @@ export function openLesson(id) {
       ${detail('users', t('Classes'), esc(l.classes.map((c) => c.name).join(', ')))}
       ${detail('layers', t('Group'), esc(l.group))}
       ${detail('clock', t('Duration'), esc(durText(l.end - l.start)) + (l.breakMin ? ` · ${esc(t('incl. {m} min break', { m: l.breakMin }))}` : ''))}
+      ${l.replaces?.length ? detail('arrow-left-right', t('Instead of'), l.replaces.map((x) => `${esc(subjName(x))}${x.teachers.length ? ` (${esc(x.teachers.map((y) => y.name).join(', '))})` : ''}`).join(', ')) : ''}
       ${detail('arrow-left-right', t('Substitution'), esc(l.subst))}
       ${detail('info', t('Info'), esc(l.info))}
       ${detail('book-open', t('Lesson text'), esc(l.text))}
