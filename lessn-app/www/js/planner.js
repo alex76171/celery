@@ -396,6 +396,7 @@ export async function handleLaunch() {
   if (target === 'calendar') setView('calendar', 'left');
   else if (target === 'recorder' || target === 'rec') setView('recorder', 'left');
   else if (target === 'today') setView('today');
+  else if (target === 'rec-perm') { setView('today'); toast(t('Allow the microphone, then tap Yes to record')); }
   else if (target.startsWith('checkin:')) { setView('today'); setTimeout(() => openStudyHelp(target.slice(8)), 400); }
 }
 /** Recordings made while the app was closed get summarized now. */

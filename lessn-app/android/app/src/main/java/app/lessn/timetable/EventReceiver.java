@@ -75,10 +75,14 @@ public class EventReceiver extends BroadcastReceiver {
     private void askRecord(Context ctx, JSONObject e) {
         int nid = 6000 + (int) ((e.optLong("start") / 60000) % 1000);
         int flags = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT;
-        Intent arm = new Intent(ctx, RecorderService.class).setAction(RecorderService.ACTION_ARM)
-            .putExtra("startAt", e.optLong("start")).putExtra("endAt", e.optLong("end"))
-            .putExtra("title", e.optString("recTitle", "Lesson")).putExtra("meta", e.optString("meta", "{}")).putExtra("nid", nid);
-        PendingIntent armPi = Build.VERSION.SDK_INT >= 26 ? PendingIntent.getForegroundService(ctx, nid, arm, flags) : PendingIntent.getService(ctx, nid, arm, flags);
+        // Android only lets an app use the microphone in the background if it started recording while visible,
+        // so "Yes" opens Lessn, which sets the recording up right away (then the phone can be locked).
+        Intent arm = new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra("lessn_open", "rec")
+            .putExtra("arm_start", e.optLong("start")).putExtra("arm_end", e.optLong("end"))
+            .putExtra("arm_title", e.optString("recTitle", "Lesson")).putExtra("arm_meta", e.optString("meta", "{}"))
+            .putExtra("nid", nid);
+        PendingIntent armPi = PendingIntent.getActivity(ctx, nid, arm, flags);
         Intent no = new Intent(ctx, EventReceiver.class).setAction(ACTION_REC_NO).putExtra("nid", nid);
         Notifs.showTo(ctx, nid, Notifs.CH_RECASK, e.optString("title"), e.optString("body"), "recorder",
             new NotificationCompat.Action(0, e.optString("yes", "Record"), armPi),

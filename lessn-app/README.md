@@ -4,7 +4,7 @@ Lessn is an unofficial Android and Windows app for WebUntis. It shows your timet
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-4.0.2.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-4.0.3.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
@@ -29,7 +29,7 @@ If the search can't find your school, tap **Enter the server manually** and type
 
 ## Lessn in the browser
 
-`lessn-web/Lessn-Web-4.0.2.zip` (or just `lessn-web/Lessn.html`) is the same app as one HTML file.
+`lessn-web/Lessn-Web-4.0.3.zip` (or just `lessn-web/Lessn.html`) is the same app as one HTML file.
 - **Double-click `Lessn.html`**: runs in any browser (AI, calendar, themes…). Browsers block the WebUntis/IServ login when the file is opened directly.
 - **With the school login**: install [Node.js](https://nodejs.org), unzip, then start `start-windows.bat` (Windows) or `./start.sh` (Mac/Linux). Lessn opens at `http://localhost:8080`; phones in the same Wi-Fi can use the address shown in the window. The little server only passes requests on to your school (each browser gets its own login session) and stores nothing.
 - Not in the browser: recording, notifications while the tab is closed, Do Not Disturb, attendance check, IServ files, PC link.
@@ -37,7 +37,7 @@ If the search can't find your school, tap **Enter the server manually** and type
 
 ## Lessn for Windows
 
-The installer is `lessn-desktop/Lessn-Setup-4.0.2.exe` (download it from GitHub on the PC).
+The installer is `lessn-desktop/Lessn-Setup-4.0.3.exe` (download it from GitHub on the PC).
 
 1. Run it. Windows SmartScreen may warn because the installer is not signed: click **More info → Run anyway**.
 2. Choose the folder and options: desktop shortcut, **Start with Windows (in the tray)** and **Allow phones in your network (firewall)** (asks for admin rights once; without it Windows asks the first time your phone connects — choose *Private networks*).

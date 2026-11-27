@@ -48,34 +48,68 @@ public class RecorderService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        try {
+            return handle(intent);
+        } catch (Exception e) {
+            // never take the app down: tell the user instead
+            fail("Recording could not start", "Open Lessn and tap Yes on the Home screen to record this lesson.");
+            return START_NOT_STICKY;
+        }
+    }
+
+    private int handle(Intent intent) {
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_STOP.equals(action)) { stopRecording(); return START_NOT_STICKY; }
         if (ACTION_CANCEL.equals(action)) { cancelArm(); return START_NOT_STICKY; }
-        if (ACTION_START.equals(action) && recorder == null) {
+        if (ACTION_START.equals(action)) {
+            if (recorder != null) return START_NOT_STICKY;
             title = intent.getStringExtra("title") == null ? "Recording" : intent.getStringExtra("title");
             background = false;
-            startForegroundNotif(title, false, 0);
+            if (!startForegroundNotif(title, false, 0)) return START_NOT_STICKY;
             begin(intent.getIntExtra("maxMinutes", 100) * 60_000L);
+            return START_NOT_STICKY;
         }
-        if (ACTION_ARM.equals(action) && recorder == null) {
+        if (ACTION_ARM.equals(action)) {
             NotificationManagerCompat.from(this).cancel(intent.getIntExtra("nid", 0));
-            title = intent.getStringExtra("title") == null ? "Lesson" : intent.getStringExtra("title");
+            long now = System.currentTimeMillis();
+            long start = intent.getLongExtra("startAt", 0);
+            long end = intent.getLongExtra("endAt", 0);
+            if (start <= 0) start = now;
+            if (end <= start) end = start + 45 * 60_000L;
+            // startForeground() must always be called after startForegroundService(), or Android closes the app
+            String t = intent.getStringExtra("title") == null ? "Lesson" : intent.getStringExtra("title");
+            if (recorder != null) { startForegroundNotif(title, false, 0); return START_NOT_STICKY; }
+            if (!startForegroundNotif(t, start > now, start)) return START_NOT_STICKY;
+            if (end <= now) { cancelArm(); return START_NOT_STICKY; }
+            title = t;
             meta = intent.getStringExtra("meta") == null ? "{}" : intent.getStringExtra("meta");
             background = true;
-            long start = intent.getLongExtra("startAt", System.currentTimeMillis());
-            long end = intent.getLongExtra("endAt", start + 45 * 60_000L);
-            long now = System.currentTimeMillis();
-            if (end <= now) { stopSelf(); return START_NOT_STICKY; }
+            handler.removeCallbacksAndMessages(null);
             armedFor = start;
+            releaseWake();
             holdWake(end - now + 5 * 60_000L);
-            startForegroundNotif(title, start > now, start);
+            final long endAt = end;
             handler.postDelayed(() -> {
                 armedFor = 0;
                 startForegroundNotif(title, false, 0);
-                begin(Math.max(60_000L, end - System.currentTimeMillis()));
+                begin(Math.max(60_000L, endAt - System.currentTimeMillis()));
             }, Math.max(0, start - now));
+            return START_NOT_STICKY;
         }
+        // unknown or empty intent (e.g. restarted by the system): satisfy Android, then stop
+        if (recorder == null && armedFor == 0) { startForegroundNotif(title, false, 0); cancelArm(); }
         return START_NOT_STICKY;
+    }
+
+    private void fail(String head, String body) {
+        try { Notifs.showTo(this, 6998, Notifs.CH_RECASK, head, body, "today"); } catch (Exception ignored) { }
+        recorder = null;
+        currentPath = null;
+        armedFor = 0;
+        handler.removeCallbacksAndMessages(null);
+        releaseWake();
+        try { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); } catch (Exception ignored) { }
+        stopSelf();
     }
 
     private void holdWake(long ms) {
@@ -105,14 +139,27 @@ public class RecorderService extends Service {
             startedAt = System.currentTimeMillis();
             handler.postDelayed(this::stopRecording, durationMs);
         } catch (Exception e) {
-            recorder = null;
-            currentPath = null;
-            releaseWake();
-            stopSelf();
+            if (recorder != null) { try { recorder.release(); } catch (Exception ignored) { } }
+            fail(title + ": recording failed", "The microphone could not be used (maybe another app is using it). Open Lessn to try again.");
         }
     }
 
-    private void startForegroundNotif(String title, boolean waiting, long startAt) {
+    private boolean startForegroundNotif(String title, boolean waiting, long startAt) {
+        try {
+            buildAndStart(title, waiting, startAt);
+            return true;
+        } catch (Exception e) {
+            // Android 14+ refuses a microphone service started while Lessn is in the background
+            // still call startForeground (with a non-microphone type) so Android does not close the app, then stop
+            if (Build.VERSION.SDK_INT >= 30) {
+                try { ServiceCompat.startForeground(this, 77, new NotificationCompat.Builder(this, Notifs.CH_RECORDING).setSmallIcon(R.drawable.ic_stat_lessn).setContentTitle(title).setSilent(true).build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC); } catch (Exception ignored) { }
+            }
+            fail("Open Lessn to record " + title, "Android only allows recording when it is set up from the app. Tap here, then tap Yes on the Home screen.");
+            return false;
+        }
+    }
+
+    private void buildAndStart(String title, boolean waiting, long startAt) {
         Notifs.ensureChannels(this);
         Intent stop = new Intent(this, RecorderService.class).setAction(waiting ? ACTION_CANCEL : ACTION_STOP);
         PendingIntent stopPi = PendingIntent.getService(this, 3, stop, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);

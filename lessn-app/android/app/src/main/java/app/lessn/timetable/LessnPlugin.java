@@ -880,11 +880,20 @@ public class LessnPlugin extends Plugin {
     @PluginMethod
     public void armRecording(PluginCall call) {
         if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { call.reject("permission"); return; }
+        // timestamps arrive as Long; PluginCall.getDouble() would silently return the default for them
+        long startAt = call.getData().optLong("startAt", 0);
+        long endAt = call.getData().optLong("endAt", 0);
+        long now = System.currentTimeMillis();
+        if (endAt <= now || endAt <= startAt) { call.reject("This lesson is already over"); return; }
         Intent i = new Intent(getContext(), RecorderService.class).setAction(RecorderService.ACTION_ARM)
-            .putExtra("startAt", (long) call.getDouble("startAt", 0d).doubleValue()).putExtra("endAt", (long) call.getDouble("endAt", 0d).doubleValue())
+            .putExtra("startAt", startAt).putExtra("endAt", endAt)
             .putExtra("title", call.getString("title", "Lesson")).putExtra("meta", call.getString("meta", "{}"));
-        androidx.core.content.ContextCompat.startForegroundService(getContext(), i);
-        call.resolve();
+        try {
+            androidx.core.content.ContextCompat.startForegroundService(getContext(), i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage() == null ? "Recording could not be set up" : e.getMessage());
+        }
     }
 
     @PluginMethod
