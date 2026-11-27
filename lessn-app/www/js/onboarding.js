@@ -297,7 +297,7 @@ function wizardHtml() {
       ${toggle('notifyLessons', t('Lesson reminders'), t('A notification before each lesson'))}
       ${toggle('notifyChanges', t('Change alerts'), t('Cancelled lessons, substitutions and room changes'))}
       ${toggle('studyCheckins', t('Ask if I have studied'), t('Before each exam or test, with help from the AI if not yet'))}
-      ${toggle('recAsk', t('Ask before each lesson if I want to record'), t('The AI then writes down homework and tests'))}
+      ${window.Capacitor?.isDesktop ? '' : toggle('recAsk', t('Ask before each lesson if I want to record'), t('The AI then writes down homework and tests'))}
       ${toggle('aiHolidayNames', t('Nicer holiday names'), t('The AI names holidays properly'))}
       ${toggle('dndLessons', t('Do not disturb during lessons'), t('Turns on when a lesson starts and off when it ends'))}
     </div>

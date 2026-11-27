@@ -28,12 +28,12 @@ import * as IS from './iserv-ui.js';
 import * as A from './assist.js';
 
 const DESK_NAV = [['today', 'Home', 'house'], ['week', 'Timetable', 'calendar-days'], ['calendar', 'Calendar', 'calendar-heart'], ['tasks', 'Homework', 'clipboard-list'], ['exams', 'Exams', 'graduation-cap'], ['ai', 'AI helper', 'sparkles'],
-  ['iserv', 'IServ', 'school'], ['is-chat', 'Messenger', 'messages-square'], ['is-mail', 'E-Mail', 'mail'], ['is-files', 'Files', 'folders'], ['grades', 'Grades', 'award'], ['recorder', 'Lesson recorder', 'mic'], ['pc', 'Phone', 'smartphone'], ['more', 'Menu', 'layout-grid']];
+  ['iserv', 'IServ', 'school'], ['is-chat', 'Messenger', 'messages-square'], ['is-mail', 'E-Mail', 'mail'], ['is-files', 'Files', 'folders'], ['grades', 'Grades', 'award'], ['recorder', 'Summaries', 'audio-lines'], ['pc', 'Phone', 'smartphone'], ['more', 'Menu', 'layout-grid']];
 const tabList = () => (isDesktop()
   ? DESK_NAV.map(([id, label, ic]) => ({ id, label, icon: ic }))
   : [...A.userTabs().map((id) => ({ id, ...A.TAB_DEFS[id] })), { id: 'more', label: 'Menu', icon: 'layout-grid' }]);
 const TITLES = {
-  grades: 'Grades', calendar: 'Calendar', links: 'Linked apps', 'ai-settings': 'AI helpers', pc: window.Capacitor?.isDesktop ? 'Phone' : 'PC', iserv: 'IServ', attendance: 'Attendance', recorder: 'Lesson recorder', ai: 'AI helper', 'ai-chat': 'AI helper',
+  grades: 'Grades', recorder: window.Capacitor?.isDesktop ? 'Summaries' : 'Lesson recorder', calendar: 'Calendar', links: 'Linked apps', 'ai-settings': 'AI helpers', pc: window.Capacitor?.isDesktop ? 'Phone' : 'PC', iserv: 'IServ', attendance: 'Attendance', ai: 'AI helper', 'ai-chat': 'AI helper',
   'is-chat': 'Messenger', 'is-room': 'Chat', 'is-mail': 'E-Mail', 'is-files': 'Files', 'is-cal': 'Calendar', 'is-notes': 'Notifications', 'is-tasks': 'Tasks',
   today: 'Home', week: 'Timetable', tasks: 'Homework', exams: 'Exams',
 };
@@ -86,7 +86,7 @@ export function updateHeader() {
     tasks: S.homework ? t('{n} open', { n: S.homework.filter((h) => !hwDone(h) && h.due >= now).length }) : '',
     exams: S.exams ? t('{n} upcoming', { n: S.exams.filter((e) => e.date >= now).length }) : '',
     more: S.account?.schoolName || S.account?.school || '',
-    grades: t('This school year'), iserv: store.iserv()?.host || '', attendance: t('Your attendance'), recorder: 'Beta',
+    grades: t('This school year'), iserv: store.iserv()?.host || '', attendance: t('Your attendance'), recorder: window.Capacitor?.isDesktop ? t('From your phone') : 'Beta',
     'is-chat': 'IServ', 'is-mail': 'IServ', 'is-files': 'IServ', 'is-cal': 'IServ', 'is-notes': 'IServ', 'is-room': 'IServ Messenger',
   };
   const sub = $('#subtitle');
@@ -420,6 +420,7 @@ function onClick(e) {
     case 'ai-regen': A.regenerate(); break;
     // recording & summaries
     case 'rec-arm': F.armNext(d.start, d.end, d.subj); break;
+    case 'rec-no': F.declineRecording(d.k); break;
     case 'rec-subjects': F.openRecSubjects(); break;
     case 'rec-subjects-save': F.saveRecSubjects(); break;
     case 'sum-hw-add': F.summaryHomework(d.id, d.i); break;
@@ -662,6 +663,10 @@ async function startupExtras() {
   LK.refreshFeeds();
   if (!native || isDesktop()) return;
   const s = S.settings;
+  if (!localStorage.getItem('lessn:recAsk10')) {
+    localStorage.setItem('lessn:recAsk10', '1');
+    s.recAsk = true; s.recAskMinutes = 10; store.saveSettings(s); scheduleNative();
+  }
   // Android 13+: ask for the notification permission once when something needs it
   if (!localStorage.getItem('lessn:askedNotif') && (s.notifyLessons || s.notifyChanges || s.studyCheckins !== false || s.recAsk || s.iservNotify)) {
     localStorage.setItem('lessn:askedNotif', '1');

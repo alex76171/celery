@@ -12,6 +12,7 @@ const write = (k, v) => { try { localStorage.setItem(`lessn:${k}`, JSON.stringif
 // ---------------------------------------------------------------- iCalendar writing
 const icsEsc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
 const dt = (u, hhmm) => { const s = String(u); return hhmm == null ? s : `${s}T${pad(Math.floor(hhmm / 100))}${pad(hhmm % 100)}00`; };
+const toHhmm = (min) => (min == null || min === '' ? null : Math.floor(min / 60) * 100 + (min % 60));
 const hm = (s) => { const m = String(s || '').match(/^(\d{1,2}):(\d{2})$/); return m ? Number(m[1]) * 100 + Number(m[2]) : null; };
 function vevent({ uid, u, start, end, title, desc, loc }) {
   const allDay = start == null;
@@ -27,7 +28,7 @@ export async function exportCalendar({ lessons = true, weeks = 4 } = {}) {
   const ev = [];
   const { myEvents, calendarExams } = await import('./planner.js');
   for (const e of myEvents()) ev.push(vevent({ uid: `ev-${e.id}`, u: e.date, start: hm(e.start), end: hm(e.end), title: e.title, desc: [subjLabel(e.subject), e.notes].filter(Boolean).join(' – ') }));
-  for (const e of [...(S.exams || []), ...store.myExams()]) ev.push(vevent({ uid: `ex-${e.id ?? `${e.date}-${e.subject}`}`, u: e.date, start: e.start || null, end: e.end || null, title: `${t('Exam')}: ${subjLabel(e.subject) || ''} ${e.name || ''}`.trim(), desc: e.text }));
+  for (const e of [...(S.exams || []), ...store.myExams()]) ev.push(vevent({ uid: `ex-${e.id ?? `${e.date}-${e.subject}`}`, u: e.date, start: e.start ? toHhmm(e.start) : null, end: e.start ? toHhmm(e.end || e.start + 45) : null, title: `${t('Exam')}: ${subjLabel(e.subject) || ''} ${e.name || ''}`.trim(), desc: e.text }));
   if (lessons) {
     const m0 = mondayOf(new Date());
     for (let w = 0; w < weeks; w++) {
@@ -38,7 +39,7 @@ export async function exportCalendar({ lessons = true, weeks = 4 } = {}) {
         const d = addDays(m, i);
         for (const l of prepareDay(data, d)) {
           if (l.code === 'cancelled') continue;
-          ev.push(vevent({ uid: `l-${toUntisDate(d)}-${l.start}-${l.subjects[0]?.name}`, u: toUntisDate(d), start: l.start, end: l.end, title: subjLabel(l.subjects[0]?.name) || l.subjects[0]?.name || t('Lesson'), loc: l.rooms.map((r) => r.name).join(', '), desc: l.teachers.map((x) => x.name).join(', ') }));
+          ev.push(vevent({ uid: `l-${toUntisDate(d)}-${l.start}-${l.subjects[0]?.name}`, u: toUntisDate(d), start: toHhmm(l.start), end: toHhmm(l.end), title: subjLabel(l.subjects[0]?.name) || l.subjects[0]?.name || t('Lesson'), loc: l.rooms.map((r) => r.name).join(', '), desc: l.teachers.map((x) => x.name).join(', ') }));
         }
       }
     }

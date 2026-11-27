@@ -42,7 +42,7 @@ function eventsOn(u) {
 }
 /** Exams and tests you added in the calendar, in the same shape as WebUntis exams. */
 export function calendarExams() {
-  return myEvents().filter((e) => examTypes.has(e.type)).map((e) => ({ id: `ev-${e.id}`, date: e.date, subject: e.subject || '', name: e.title, text: e.notes || '', start: hm(e.start) || 0, fromCalendar: true, type: e.type }));
+  return myEvents().filter((e) => examTypes.has(e.type)).map((e) => ({ id: `ev-${e.id}`, date: e.date, subject: e.subject || '', name: e.title, text: e.notes || '', start: hm(e.start) != null ? Math.floor(hm(e.start) / 100) * 60 + hm(e.start) % 100 : 0, fromCalendar: true, type: e.type }));
 }
 
 // ---------------------------------------------------------------- everything on a day (for the calendar and the AI)
@@ -260,7 +260,7 @@ export function plannerEvents() {
 /** Asks before a lesson whether it should be recorded (the Record button then records it even with the phone locked). */
 export function recordAskEvents(days) {
   const s = S.settings;
-  if (!s.recAsk) return [];
+  if (!s.recAsk || window.Capacitor?.isDesktop) return [];
   const out = [];
   const now = Date.now();
   const subjects = s.recAskSubjects || [];
@@ -274,14 +274,14 @@ export function recordAskEvents(days) {
     }
     for (const b of blocks) {
       if (subjects.length && !subjects.includes(b.k)) continue;
-      const start = dateAtMin(Number(u), `${Math.floor(b.start / 100)}:${pad(b.start % 100)}`);
-      const end = dateAtMin(Number(u), `${Math.floor(b.end / 100)}:${pad(b.end % 100)}`);
-      const at = start - Number(s.recAskMinutes ?? 3) * 60000;
+      const start = dateAtMin(Number(u), `${Math.floor(b.start / 60)}:${pad(b.start % 60)}`); // minutes since midnight
+      const end = dateAtMin(Number(u), `${Math.floor(b.end / 60)}:${pad(b.end % 60)}`);
+      const at = start - Number(s.recAskMinutes ?? 10) * 60000;
       if (at <= now) continue;
       const name = subjLabel(b.k) || b.k;
       out.push({
         at, type: 'recask', start, end, recTitle: name, title: t('Record {subject}?', { subject: name }), body: t('Starts at {time}. Recording starts and stops by itself, even with the phone locked.', { time: fmtTime(b.start) }),
-        yes: t('Record'), no: t('Not now'), meta: JSON.stringify({ subject: b.k, date: Number(u), start: b.start, end: b.end }),
+        yes: t('Yes'), no: t('No'), meta: JSON.stringify({ subject: b.k, date: Number(u), start: b.start, end: b.end }),
       });
     }
   }

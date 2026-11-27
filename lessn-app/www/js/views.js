@@ -493,7 +493,7 @@ export function openLesson(id) {
       <button data-act="ls-test" data-id="${esc(id)}"><span style="--c:#8e4ec6">${icon('graduation-cap')}</span>${esc(t('Add test'))}</button>
       <button data-act="ls-event" data-id="${esc(id)}"><span style="--c:#4f6bff">${icon('calendar-plus')}</span>${esc(t('Add to calendar'))}</button>
       <button data-act="ls-remind" data-id="${esc(id)}"><span style="--c:#12a594">${icon('bell')}</span>${esc(t('Remind me'))}</button>
-      ${l.date === toUntisDate(new Date()) && l.end > nowMinV() && l.code !== 'cancelled' ? `<button data-act="ls-record" data-id="${esc(id)}"><span style="--c:#e5484d">${icon('mic')}</span>${esc(l.start <= nowMinV() ? t('Record now') : t('Record'))}</button>` : ''}
+      ${!window.Capacitor?.isDesktop && l.date === toUntisDate(new Date()) && l.end > nowMinV() && l.code !== 'cancelled' ? `<button data-act="ls-record" data-id="${esc(id)}"><span style="--c:#e5484d">${icon('mic')}</span>${esc(l.start <= nowMinV() ? t('Record now') : t('Record'))}</button>` : ''}
       <button data-act="ls-ai" data-id="${esc(id)}"><span style="--c:#6e56cf">${icon('sparkles')}</span>${esc(t('Ask AI'))}</button>
       <button data-act="ls-share" data-id="${esc(id)}"><span style="--c:#f76b15">${icon('share-2')}</span>${esc(t('Share'))}</button>
       <button data-act="ls-subject" data-id="${esc(id)}"><span style="--c:#30a46c">${icon('book-open')}</span>${esc(t('Subject overview'))}</button>
@@ -511,7 +511,7 @@ export function openLesson(id) {
 
 export { PALETTE, hash };
 
-const nowMinV = () => { const d = new Date(); return d.getHours() * 100 + d.getMinutes(); };
+const nowMinV = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 /** Actions of the lesson popup. */
 export async function lessonAction(act, id) {
   const l = S.index[id];

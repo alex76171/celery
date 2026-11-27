@@ -3,6 +3,11 @@ export const LANGS = { en: 'English', de: 'Deutsch', tr: 'Türkçe', fr: 'Franç
 
 export const DICT = {
  "de": {
+  "From your phone": "Vom Handy",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Stunden, die du auf dem Handy aufnimmst, werden hier zusammengefasst. Aufnehmen selbst geht in der App auf dem Handy.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Nimm eine Stunde mit Lessn auf dem Handy auf. Die Zusammenfassung erscheint hier.",
+  "15 minutes before": "15 Minuten vorher",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Gefragt auf der Startseite und per Benachrichtigung. Ja: Die Aufnahme startet mit der Stunde und stoppt am Ende, auch bei gesperrtem Handy",
   "Free AI is ready": "Kostenlose KI ist bereit",
   "Notifications work. You will be reminded like this.": "Benachrichtigungen funktionieren. So wirst du erinnert.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Frag mich mit 10 Fragen zu dieser Prüfung ab, eine nach der anderen. Warte auf meine Antwort vor der nächsten Frage.",
@@ -913,6 +918,11 @@ export const DICT = {
   "Next lesson": "Nächste Stunde"
  },
  "tr": {
+  "From your phone": "Telefonundan",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Telefonunda kaydettiğin dersler burada özetlenir. Kaydın kendisi telefondaki uygulamada yapılır.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Telefonundaki Lessn ile bir ders kaydet. Özeti burada görünür.",
+  "15 minutes before": "15 dakika önce",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Ana sayfada ve bildirimle sorulur. Evet: kayıt dersle başlar ve sonunda durur, telefon kilitliyken bile",
   "Free AI is ready": "Ücretsiz yapay zekâ hazır",
   "Notifications work. You will be reminded like this.": "Bildirimler çalışıyor. Böyle hatırlatılacaksın.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Bu sınav hakkında bana 10 soru sor, birer birer. Bir sonraki sorudan önce cevabımı bekle.",
@@ -1823,6 +1833,11 @@ export const DICT = {
   "Next lesson": "Sonraki ders"
  },
  "fr": {
+  "From your phone": "Depuis ton téléphone",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Les cours enregistrés sur ton téléphone sont résumés ici. L'enregistrement se fait dans l'app sur ton téléphone.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Enregistre un cours avec Lessn sur ton téléphone. Son résumé apparaît ici.",
+  "15 minutes before": "15 minutes avant",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Demandé sur l'accueil et par notification. Oui : l'enregistrement commence avec le cours et s'arrête à la fin, même téléphone verrouillé",
   "Free AI is ready": "L'IA gratuite est prête",
   "Notifications work. You will be reminded like this.": "Les notifications fonctionnent. Tu seras rappelé comme ça.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Interroge-moi avec 10 questions sur cet examen, une par une. Attends ma réponse avant la question suivante.",
@@ -2733,6 +2748,11 @@ export const DICT = {
   "Next lesson": "Prochain cours"
  },
  "es": {
+  "From your phone": "Desde tu móvil",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Las clases que grabas en el móvil se resumen aquí. La grabación se hace en la app del móvil.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Graba una clase con Lessn en el móvil. Su resumen aparece aquí.",
+  "15 minutes before": "15 minutos antes",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Se pregunta en Inicio y con una notificación. Sí: la grabación empieza con la clase y para al final, incluso con el móvil bloqueado",
   "Free AI is ready": "La IA gratuita está lista",
   "Notifications work. You will be reminded like this.": "Las notificaciones funcionan. Así te lo recordaremos.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Hazme 10 preguntas sobre este examen, una a una. Espera mi respuesta antes de la siguiente.",
@@ -3643,6 +3663,11 @@ export const DICT = {
   "Next lesson": "Próxima clase"
  },
  "pl": {
+  "From your phone": "Z telefonu",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Lekcje nagrane na telefonie są tu podsumowane. Samo nagrywanie działa w aplikacji na telefonie.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Nagraj lekcję w Lessn na telefonie. Podsumowanie pojawi się tutaj.",
+  "15 minutes before": "15 minut wcześniej",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Pytanie na ekranie głównym i w powiadomieniu. Tak: nagrywanie zaczyna się z lekcją i kończy na końcu, nawet przy zablokowanym telefonie",
   "Free AI is ready": "Darmowa AI jest gotowa",
   "Notifications work. You will be reminded like this.": "Powiadomienia działają. Tak będziesz przypominany.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Przepytaj mnie 10 pytaniami z tego sprawdzianu, po jednym. Poczekaj na moją odpowiedź przed kolejnym.",
@@ -4553,6 +4578,11 @@ export const DICT = {
   "Next lesson": "Następna lekcja"
  },
  "ru": {
+  "From your phone": "С телефона",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Уроки, записанные на телефоне, кратко изложены здесь. Сама запись работает в приложении на телефоне.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Запиши урок в Lessn на телефоне. Резюме появится здесь.",
+  "15 minutes before": "За 15 минут",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Спрашивается на главной и в уведомлении. Да: запись начинается с уроком и заканчивается в конце, даже на заблокированном телефоне",
   "Free AI is ready": "Бесплатный ИИ готов",
   "Notifications work. You will be reminded like this.": "Уведомления работают. Так ты будешь получать напоминания.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Задай мне 10 вопросов по этому экзамену, по одному. Жди моего ответа перед следующим вопросом.",
@@ -5463,6 +5493,11 @@ export const DICT = {
   "Next lesson": "Следующий урок"
  },
  "uk": {
+  "From your phone": "З телефона",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "Уроки, записані на телефоні, підсумовано тут. Сам запис працює в застосунку на телефоні.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "Запиши урок у Lessn на телефоні. Підсумок з'явиться тут.",
+  "15 minutes before": "За 15 хвилин",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "Питання на головній і в сповіщенні. Так: запис починається з уроком і закінчується наприкінці, навіть на заблокованому телефоні",
   "Free AI is ready": "Безкоштовний ШІ готовий",
   "Notifications work. You will be reminded like this.": "Сповіщення працюють. Так ти отримуватимеш нагадування.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "Постав мені 10 запитань з цього іспиту, по одному. Чекай на мою відповідь перед наступним.",
@@ -6373,6 +6408,11 @@ export const DICT = {
   "Next lesson": "Наступний урок"
  },
  "ar": {
+  "From your phone": "من هاتفك",
+  "Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.": "تُلخَّص هنا الحصص التي تسجلها على هاتفك. التسجيل نفسه يتم في التطبيق على الهاتف.",
+  "Record a lesson with Lessn on your phone. Its summary shows up here.": "سجّل حصة باستخدام Lessn على هاتفك. سيظهر ملخصها هنا.",
+  "15 minutes before": "قبل 15 دقيقة",
+  "Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked": "يُسأل في الصفحة الرئيسية وبإشعار. نعم: يبدأ التسجيل مع الحصة ويتوقف عند نهايتها حتى والهاتف مقفل",
   "Free AI is ready": "الذكاء الاصطناعي المجاني جاهز",
   "Notifications work. You will be reminded like this.": "الإشعارات تعمل. هكذا سيتم تذكيرك.",
   "Quiz me with 10 questions about this exam, one at a time. Wait for my answer before the next question.": "اسألني 10 أسئلة عن هذا الامتحان، سؤالًا تلو الآخر. انتظر إجابتي قبل السؤال التالي.",

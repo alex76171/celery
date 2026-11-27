@@ -21,7 +21,7 @@ export function viewMore() {
   const off = offlineInfo();
   const tabs = userTabs();
   const tiles = [
-    ...Object.entries(TAB_DEFS).filter(([k]) => !tabs.includes(k)).map(([k, d]) => [k, d.icon, t(d.label === 'Recorder' ? 'Lesson recorder' : d.label === 'AI' ? 'AI helper' : d.label), k === 'recorder' || k === 'ai' ? 'Beta' : '', 'nav']),
+    ...Object.entries(TAB_DEFS).filter(([k]) => !tabs.includes(k)).map(([k, d]) => [k, d.icon, t(d.label === 'Recorder' ? (window.Capacitor?.isDesktop ? 'Summaries' : 'Lesson recorder') : d.label === 'AI' ? 'AI helper' : d.label), (k === 'recorder' && !window.Capacitor?.isDesktop) || k === 'ai' ? 'Beta' : '', 'nav']),
     ['browse', 'users', t('Other timetables'), '', 'browse'],
     ['holidays', 'sun', t('Holidays'), '', 'holidays'],
     ['directions', 'navigation', t('Directions to school'), '', 'directions'],
@@ -264,6 +264,18 @@ export function viewRecorder() {
   const cur = currentLesson();
   const elapsed = rec?.startedAt ? Math.floor((Date.now() - rec.startedAt) / 1000) : 0;
   const busy = S.recBusy;
+  if (window.Capacitor?.isDesktop) {
+    return `<div class="pad">
+      <p class="hint lead"${stagger(0)}>${esc(t('Lessons recorded on your phone are summarized here. Recording itself works in the app on your phone.'))}</p>
+      ${busy ? `<div class="processing">${icon('sparkles', 'spin-slow')}<span>${esc(busy)}</span></div>` : ''}
+      ${sums.length ? sums.map((x, i) => `<button class="sum-card ${x.status === 'error' ? 'err' : ''}" data-act="open-summary" data-id="${x.id}" style="--c:${colorFor(x.subject)};--i:${Math.min(i + 1, 14)}">
+        <div class="sum-top"><b>${esc(subjLabel(x.subject) || t('Lesson'))}</b><span>${esc(fmt(fromUntisDate(x.date), { day: 'numeric', month: 'short' }))} · ${esc(durText(Math.round(x.durationMs / 60000)))}</span></div>
+        <div class="sum-title">${esc(x.status === 'error' ? t('Summary failed') : x.status === 'pending' ? t('AI is listening to the lesson. This can take a minute…') : x.result?.title || '')}</div>
+        ${x.result?.topics?.length ? `<div class="chips-mini">${x.result.topics.slice(0, 4).map((tp) => `<span>${esc(tp)}</span>`).join('')}</div>` : ''}
+        ${x.result?.tests?.length ? badge({ cls: 'bad', icon: 'graduation-cap', text: t('{n} tests mentioned', { n: x.result.tests.length }) }) : ''}
+      </button>`).join('') : emptyState('audio-lines', t('No summaries yet'), t('Record a lesson with Lessn on your phone. Its summary shows up here.'))}
+    </div>`;
+  }
   return `<div class="pad">
     <div class="notice warn"${stagger(0)}>${icon('shield-alert')}<span>${esc(t('Beta. Only record lessons when your teacher and class agree. Recording people without their consent can be illegal.'))}</span></div>
     ${!key ? `<button class="ai-setup" data-act="setup-ai"${stagger(1)}>${icon('key-round')}<span><b>${esc(t('Set up AI'))}</b><small>${esc(t('Lesson summaries need Gemini, OpenAI or Mistral for the audio. Add one of these keys in the AI settings.'))}</small></span>${icon('chevron-right', 'row-chev')}</button>` : ''}
@@ -408,12 +420,12 @@ export async function openNotifSettings() {
       ${s.studyCheckins !== false ? dd(t('When to ask'), 'checkinDays', [['7,3,1', t('7, 3 and 1 day before')], ['3,1', t('3 and 1 day before')], ['5,2', t('5 and 2 days before')], ['14,7,3,1', t('2 weeks, 1 week, 3 days, 1 day before')], ['1', t('The day before')]], s.checkinDays || '7,3,1') : ''}
       ${s.studyCheckins !== false ? dd(t('At'), 'checkinHour', [['15', '15:00'], ['16', '16:00'], ['17', '17:00'], ['18', '18:00'], ['19', '19:00'], ['20', '20:00']], String(s.checkinHour ?? 17)) : ''}
     </div>
-    <div class="section-title">${icon('mic')}${esc(t('Lesson recording'))}</div>
+    ${window.Capacitor?.isDesktop ? '' : `<div class="section-title">${icon('mic')}${esc(t('Lesson recording'))}</div>
     <div class="card">
-      ${toggle('recAsk', t('Ask before each lesson if I want to record'), t('Tap Record in the notification: it starts with the lesson and stops at the end, even with the phone locked'), 'notif-toggle')}
-      ${s.recAsk ? dd(t('Ask'), 'recAskMinutes', [['1', t('1 minute before')], ['3', t('3 minutes before')], ['5', t('5 minutes before')], ['10', t('10 minutes before')]], String(s.recAskMinutes ?? 3)) : ''}
+      ${toggle('recAsk', t('Ask before each lesson if I want to record'), t('Asked on Home and as a notification. Yes: recording starts with the lesson and stops at the end, even with the phone locked'), 'notif-toggle')}
+      ${s.recAsk ? dd(t('Ask'), 'recAskMinutes', [['5', t('5 minutes before')], ['10', t('10 minutes before')], ['15', t('15 minutes before')]], String(s.recAskMinutes ?? 10)) : ''}
       ${s.recAsk ? `<button class="row" data-act="rec-subjects"><span class="row-text"><b>${esc(t('Subjects'))}</b><small>${esc((s.recAskSubjects || []).length ? (s.recAskSubjects || []).map((k) => subjLabel(k) || k).join(', ') : t('All subjects'))}</small></span>${icon('chevron-right', 'row-chev')}</button>` : ''}
-    </div>
+    </div>`}
     <button class="btn small ghost center-btn" data-act="notif-test">${icon('bell')}${esc(t('Send a test notification'))}</button>
     ${store.iserv() ? `<div class="section-title">${icon('school')}IServ</div><div class="card">${toggle('iservNotify', t('IServ notifications'), t('New messages and IServ notifications, checked every 15 minutes'), 'iserv-notify')}</div>` : ''}
     <div class="section-title">${icon('bell-off')}${esc(t('Do not disturb'))}</div>
@@ -624,25 +636,33 @@ export async function summaryPdf(id) {
 }
 /** Home card: "Record Maths at 09:45?" when the next lesson starts soon (works with the phone locked after that). */
 export function recordNextCard() {
-  if (!S.settings.recAsk || !hasNative()) return '';
+  if (!S.settings.recAsk || !hasNative() || window.Capacitor?.isDesktop) return '';
   const now = new Date();
-  const nowMin = now.getHours() * 100 + now.getMinutes();
+  const nowMin = now.getHours() * 60 + now.getMinutes(); // lesson times are minutes since midnight
   const list = (lessonsToday() || []).filter((l) => l.code !== 'cancelled' && l.start > nowMin);
   const next = list[0];
   if (!next) return '';
-  const mins = (Math.floor(next.start / 100) * 60 + next.start % 100) - (now.getHours() * 60 + now.getMinutes());
-  if (mins > 15) return '';
+  const mins = next.start - nowMin;
+  if (mins > Number(S.settings.recAskMinutes ?? 10) || mins < 0) return '';
   const k = `${toUntisDate(now)}-${next.start}`;
+  if (recDeclined().includes(k)) return '';
   if (S.recArmed === k) return `<div class="checkin rec-armed">${icon('mic', 'live')}<div><b>${esc(t('Recording is set up'))}</b><small>${esc(t('{subject} starts at {time}. You can lock the phone.', { subject: subjName(next), time: fmtTime(next.start) }))}</small></div></div>`;
   return `<div class="checkin">${icon('mic')}<div><b>${esc(t('Record {subject}?', { subject: subjName(next) }))}</b><small>${esc(t('Starts at {time}. Recording starts and stops by itself, even with the phone locked.', { time: fmtTime(next.start) }))}</small>
-    <div class="ci-btns"><button class="chip ai-chip" data-act="rec-arm" data-start="${next.start}" data-end="${chainEnd(list, next)}" data-subj="${esc(subjKey(next))}">${icon('mic')}${esc(t('Record'))}</button></div></div></div>`;
+    <div class="ci-btns"><button class="chip ai-chip" data-act="rec-arm" data-start="${next.start}" data-end="${chainEnd(list, next)}" data-subj="${esc(subjKey(next))}">${icon('check')}${esc(t('Yes'))}</button><button class="chip" data-act="rec-no" data-k="${esc(k)}">${icon('x')}${esc(t('No'))}</button></div></div></div>`;
+}
+/** Lessons the student said "No" to (today only). */
+function recDeclined() { try { const v = JSON.parse(localStorage.getItem('lessn:recNo') || '{}'); return v.day === toUntisDate(new Date()) ? v.keys : []; } catch { return []; } }
+export function declineRecording(k) {
+  const keys = [...recDeclined(), k];
+  localStorage.setItem('lessn:recNo', JSON.stringify({ day: toUntisDate(new Date()), keys }));
+  render();
 }
 function lessonsToday() { const d = startOfDay(new Date()); const m = addDays(d, -((d.getDay() + 6) % 7)); const data = weekData(m, ownElement()); return data ? prepareDay(data, d) : null; }
 function chainEnd(list, first) { let end = first.end; for (const l of list) if (l.start >= end && l.start - end <= 20 && subjKey(l) === subjKey(first)) end = l.end; return end; }
 export async function armNext(start, end, subj) {
   const st = await native.request(['microphone', 'notifications']).catch(() => ({}));
   if (st.microphone && st.microphone !== 'granted') { toast(t('Microphone permission is needed'), 'err'); return; }
-  const at = (hhmm) => { const d = new Date(); d.setHours(Math.floor(hhmm / 100), hhmm % 100, 0, 0); return d.getTime(); };
+  const at = (min) => { const d = new Date(); d.setHours(Math.floor(min / 60), min % 60, 0, 0); return d.getTime(); };
   try {
     await native.armRecording({ startAt: at(Number(start)), endAt: at(Number(end)), title: subjLabel(subj) || subj || t('Lesson'), meta: JSON.stringify({ subject: subj, date: toUntisDate(new Date()), start: Number(start), end: Number(end) }) });
     S.recArmed = `${toUntisDate(new Date())}-${start}`;

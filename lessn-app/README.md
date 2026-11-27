@@ -4,7 +4,7 @@ Lessn is an unofficial Android and Windows app for WebUntis. It shows your timet
 
 ## Install the APK (easy way)
 
-1. Copy `Lessn-4.0.1.apk` to your phone, or download it from GitHub on the phone.
+1. Copy `Lessn-4.0.2.apk` to your phone, or download it from GitHub on the phone.
 2. Tap it and allow installs from this source. If Play Protect warns, tap **More details → Install anyway**.
 3. If 1.0 is already installed, this installs over it and keeps your data.
 4. Open **Lessn**. Search for your school on the first screen, then sign in on the second.
@@ -17,7 +17,7 @@ If the search can't find your school, tap **Enter the server manually** and type
 - **Calendar** (new tab, also in Menu): month view with exams, homework, your own events, holidays and IServ dates. Add events, exams, tests, presentations, reminders, trips, birthdays and days off, with time, reminder, weekly/yearly repeat and notes. Exams and tests you add count everywhere (Exams, Home, AI, study plans).
 - **The AI knows your schedule**: every chat gets today's and tomorrow's lessons, upcoming exams and tests, homework due and your calendar.
 - **"Have you studied?"**: 7, 3 and 1 day before each exam (adjustable) Lessn asks, on Home and as a notification. *Not yet* opens help: study plan, explanations, quiz, flashcards as PDF, or study time in the calendar.
-- **Record each lesson on request**: turn on *Ask before each lesson if I want to record* (Menu → Notifications). A few minutes before each lesson a notification asks *Record Maths?*; tap **Record** and it starts with the lesson and stops at the end, even with the phone locked. The summary then lists homework with due date, whether it is **graded** and how important it is, tests (one tap into the calendar), and AI suggestions (study plan, quiz, flashcards). Add homework one by one or all at once; save the summary as PDF.
+- **Record each lesson on request** (phone only): 10 minutes before each lesson Lessn asks *Record Maths?* on Home and as a notification, with **Yes** and **No** (change the time or subjects in Menu → Notifications). Tap **Yes** and it starts with the lesson and stops at the end, even with the phone locked. The summary then lists homework with due date, whether it is **graded** and how important it is, tests (one tap into the calendar), and AI suggestions (study plan, quiz, flashcards). Add homework one by one or all at once; save the summary as PDF.
 - **AI chat**: answers with headings, tables, --- lines, task lists, quotes and code; titles written by the AI; copy, read aloud, share, save as PDF, try again, ask another AI. The AI can **create files** (PDF, Markdown, CSV, HTML, SVG…) that appear as attachments to open or save, and **run code**: Python (with numpy, pandas, matplotlib; plots and files appear in the chat, needs internet the first time) and JavaScript, with *Fix with AI* on errors.
 - **More AIs**: Groq, xAI Grok, DeepSeek, Perplexity, Cohere, Cerebras, Together, Fireworks, GitHub Models, Hugging Face, NVIDIA, SambaNova, Moonshot Kimi, Alibaba Qwen and Z.ai GLM, besides Gemini, OpenAI, Claude, Mistral, OpenRouter, your PC and any OpenAI-compatible server. **Without API keys**: *Pollinations* works with no account; *Sign in with OpenRouter* gets a key by logging in (free models included).
 - **Notifications that work**: lesson reminders on by default, the permission is asked once, a health check shows and fixes problems (notifications off, exact alarms, battery saver), a test button, and change alerts (cancelled lessons, substitutions, room changes) are checked every 30 minutes even when Lessn is closed. Tapping a notification opens the right screen.
@@ -29,7 +29,7 @@ If the search can't find your school, tap **Enter the server manually** and type
 
 ## Lessn for Windows
 
-The installer is `lessn-desktop/Lessn-Setup-4.0.1.exe` (download it from GitHub on the PC).
+The installer is `lessn-desktop/Lessn-Setup-4.0.2.exe` (download it from GitHub on the PC).
 
 1. Run it. Windows SmartScreen may warn because the installer is not signed: click **More info → Run anyway**.
 2. Choose the folder and options: desktop shortcut, **Start with Windows (in the tray)** and **Allow phones in your network (firewall)** (asks for admin rights once; without it Windows asks the first time your phone connects — choose *Private networks*).
@@ -47,7 +47,7 @@ The installer is `lessn-desktop/Lessn-Setup-4.0.1.exe` (download it from GitHub 
 - The link uses your local network only (port 47900, discovery on UDP 47901), protected by a pairing code and a private token per phone.
 
 ### What is different on the PC
-Lesson recording uses the PC's microphone (saved as MP3 so every AI accepts it); voice messages work too. Do Not Disturb and the "Are you at school?" location check are phone-only. IServ notifications and lesson reminders show as Windows notifications while Lessn runs in the tray.
+Lessons are recorded on the phone; the PC only shows their summaries (Summaries in the sidebar). Voice messages in the messenger work on the PC. Do Not Disturb and the "Are you at school?" location check are phone-only. IServ notifications and lesson reminders show as Windows notifications while Lessn runs in the tray.
 
 ### Build the Windows app yourself
 In `lessn-desktop/`: `npm install`, then `npm start` to run it, or `npm run dist` to build the installer (needs `makensis` from NSIS; works on Windows, Linux or macOS, no Wine needed).
