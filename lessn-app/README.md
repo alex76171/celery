@@ -27,6 +27,14 @@ If the search can't find your school, tap **Enter the server manually** and type
 - **Linked apps** (Menu): export exams, events and lessons to Google, Outlook or Apple Calendar (.ics), subscribe to calendars (school calendar, Google Calendar secret iCal link), OpenRouter sign-in, free AI, PC link.
 - **Look and feel**: 13 new themes (Windows 11 light/dark, iOS light/dark, Nord, Dracula, Catppuccin Latte/Mocha, Rosé Pine, Solarized, Mint, Lavender, High contrast), 15 new fonts (incl. Segoe UI, Lexend, Atkinson Hyperlegible and OpenDyslexic for easier reading), animated switches and icons, smoother screen changes. On phones dropdowns open as full-screen pickers; on the PC they stay small popovers.
 
+## Lessn in the browser
+
+`lessn-web/Lessn-Web-4.0.2.zip` (or just `lessn-web/Lessn.html`) is the same app as one HTML file.
+- **Double-click `Lessn.html`**: runs in any browser (AI, calendar, themes…). Browsers block the WebUntis/IServ login when the file is opened directly.
+- **With the school login**: install [Node.js](https://nodejs.org), unzip, then start `start-windows.bat` (Windows) or `./start.sh` (Mac/Linux). Lessn opens at `http://localhost:8080`; phones in the same Wi-Fi can use the address shown in the window. The little server only passes requests on to your school (each browser gets its own login session) and stores nothing.
+- Not in the browser: recording, notifications while the tab is closed, Do Not Disturb, attendance check, IServ files, PC link.
+- Build it yourself: in `lessn-web/` run `npm install` and `npm run build`.
+
 ## Lessn for Windows
 
 The installer is `lessn-desktop/Lessn-Setup-4.0.2.exe` (download it from GitHub on the PC).

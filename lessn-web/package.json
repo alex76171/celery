@@ -1,0 +1,13 @@
+{
+  "name": "lessn-web",
+  "version": "4.0.2",
+  "private": true,
+  "description": "Lessn in the browser: one HTML file plus a tiny server for school logins",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node server.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}
